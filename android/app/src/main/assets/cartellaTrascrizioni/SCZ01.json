@@ -33,7 +33,7 @@
       "role": "medico",
       "start": 135.11534375000002,
       "end": 137.37659375,
-      "text": " Chi va con lo zoppo impara a zoppicare."
+      "text": " il significato di questo proverbio: chi va con lo zoppo impara a zoppicare."
     },
     {
       "speaker": "SPEAKER_01",
@@ -48,13 +48,6 @@
       "start": 161.84534375,
       "end": 163.90409375000002,
       "text": "Che cosa pensa lei dell'amore?"
-    },
-    {
-      "speaker": "SPEAKER_01",
-      "role": "medico",
-      "start": 181.75784375,
-      "end": 190.14471875,
-      "text": "Adesso le faccio qualche domanda su alcune cose che lei mi dice se le capitano, se non le capitano e ogni quanto le danno fastidio."
     },
     {
       "speaker": "SPEAKER_01",

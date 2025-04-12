@@ -500,6 +500,7 @@ export default function App() {
                               >> Allora DEVI chiedere:
                               - Con quale frequenza ti succede?
                               - Quanto ti dà fastidio o ti crea disagi?
+                              (SE LA DOMANDA PRECEDENTE ERA PROPRIO QUESTA NON CHIEDERLA DI NUOVO)
 
                          ⚠ **IMPORTANTE:** Se si rientra nei criteri del punto 1 non considerare il punto 2, sono mutuamente esclusivi**.
 
