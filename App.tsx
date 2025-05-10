@@ -474,6 +474,7 @@ export default function App() {
         setHasAskedForNameAndBirth(true);
       } else {
           //Alert.alert('File salvato con successo', `Il file è stato salvato come: ${askedQuestions.join('\n\n,')}`);
+          //Alert.alert('File salvato con successo', `Il file è stato salvato come: ${questions}`);
          prompt = `RISPOSTA PAZIENTE: ${input}
                          ### TU DEVI SEGUIRE QUESTE REGOLE:
                          Seguono 2 punti (punto 1 e punto 2), devi seguire sempre attentamente queste regole, senza mai tralasciare nulla al caso, tenendo in considerazione che devi dare priorità fondamentale al punto 1, e solo se non si ricade nelle sue casistiche passare al punto 2 (non includere messaggi aggiuntivi come "il paziente..."):
@@ -504,8 +505,9 @@ export default function App() {
 
                          ⚠ **IMPORTANTE:** Se si rientra nei criteri del punto 1 non considerare il punto 2, sono mutuamente esclusivi**.
 
-                         punto 2. **Qui sotto hai l'elenco delle domande da poter fare, segui l'ordine così come impostato, senza prendere iniziative, devi scegliere una sola domanda per volta, se segui le regole che seguono tutto andrà bene (ricorda questi passaggi bisogna farli solo e solo se hai avuto nome e data di nascita dal paziente):**
+                         punto 2. **Qui sotto hai l'elenco delle domande numerate, senza prendere iniziative, devi scegliere la prima della lista che non hai già fatto, se segui le regole che seguono tutto andrà bene (ricorda questi passaggi bisogna farli solo e solo se hai avuto nome e data di nascita dal paziente):**
                             - ${questions}
+                            - Segui esattamente l'ordine numerato, partendo dall domanda 1 e seguendo l'ordine.
                             - Non mischiare mai più frasi insieme, solo una dell'elenco deve essere presa.
                             - Se necessario, **riformula la domanda** per renderla più chiara o adatta al contesto, per esempio non puoi dire un proverbio senza prima chiedergli di dirti il significato del proverbio.
                             - Dalle domande disponibili per la scelta devi escludere quelle presenti in questo elenco:\n [${askedQuestions.join(',\n\n')}].

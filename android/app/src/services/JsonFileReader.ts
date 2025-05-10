@@ -35,10 +35,11 @@ class JsonFileReader {
       // 5. Estrai le domande mediche
       if (jsonData && Array.isArray(jsonData.transcription)) {
         const medicalQuestions = jsonData.transcription
-                .filter(entry => entry?.role === 'medico' && entry.text)
-                .map(entry => entry.text+"\n\n");
+          .filter(entry => entry?.role === 'medico' && entry.text)
+          .map((entry, index) => `${index + 1}. ${entry.text}\n`);
 
-              return medicalQuestions;
+        return medicalQuestions.join('\n');
+
       }
 
       throw new Error('Formato JSON non valido');
