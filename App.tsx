@@ -15,6 +15,7 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { API_KEY } from '@env';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,14 +26,16 @@ import { captureRef } from 'react-native-view-shot';
 import { PDF, PDFPage, PDFText, PDFFont } from 'react-native-pdf';
 
 const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 interface Chat {
   id: string;
   title: string;
   messages: { role: 'user' | 'bot'; message: string }[];
   createdAt: string;
+  evaluationScores: { [fenomeno: string]: number }; // 👈 AGGIUNTO
 }
+
 
 const ExportModal = ({ visible, onClose, onSave }) => {
   const [fileName, setFileName] = useState('');
@@ -85,6 +88,7 @@ const ExportModal = ({ visible, onClose, onSave }) => {
 };
 
 export default function App() {
+    const [dropdownVisible, setDropdownVisible] = useState(false);
   const [input, setInput] = useState('');
   const [chat, setChat] = useState<{ role: 'user' | 'bot'; message: string }[]>([]);
   const [questions, setQuestions] = useState<string[]>([]);
@@ -92,6 +96,7 @@ export default function App() {
   const [evaluating, setEvaluating] = useState(false);
   const [hasAskedForNameAndBirth, setHasAskedForNameAndBirth] = useState(false);
   const [chatHistory, setChatHistory] = useState<Chat[]>([]);
+  const [currentEvaluationScores, setCurrentEvaluationScores] = useState<{ [fenomeno: string]: number }>({});
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string>(Date.now().toString());
   const [voiceEnabled, setVoiceEnabled] = useState(false);
@@ -145,12 +150,14 @@ export default function App() {
       ? firstUserMessage.message.substring(0, 30) + (firstUserMessage.message.length > 30 ? '...' : '')
       : 'Nuova conversazione';
 
-    const updatedChat: Chat = {
-      id: currentChatId,
-      title: chatTitle,
-      messages: [...chat],
-      createdAt: new Date().toISOString()
-    };
+   const updatedChat: Chat = {
+     id: currentChatId,
+     title: chatTitle,
+     messages: [...chat],
+     createdAt: new Date().toISOString(),
+     evaluationScores: currentEvaluationScores  // 👈 aggiunto qui!
+   };
+
 
     setChatHistory(prev => {
       const existingIndex = prev.findIndex(c => c.id === currentChatId);
@@ -196,6 +203,22 @@ export default function App() {
       }
     }
   }, [chat]);
+const [problemOptions, setProblemOptions] = useState<any[]>([]);
+
+useEffect(() => {
+  const loadProblems = async () => {
+    try {
+      const problems = await JsonFileReader.getProblemDetails();
+      setProblemOptions(problems);
+    } catch (err) {
+      console.error('Errore nel caricamento dei fenomeni:', err);
+    }
+  };
+
+  if (chat.length > 0 && problemOptions.length === 0) {
+    loadProblems();
+  }
+}, [chat]);
 
   const requestStoragePermission = async () => {
     if (Platform.OS !== 'android') {
@@ -300,7 +323,15 @@ export default function App() {
     setAskedQuestions([]);
     setIsFirstLoad(false);
     setInitialPromptSent(false);
+
+    // 👇 Inizializza punteggi a -1
+    const initialScores: { [key: string]: number } = {};
+    problemOptions.forEach(p => {
+      initialScores[p.fenomeno] = -1;
+    });
+    setCurrentEvaluationScores(initialScores);
   };
+
 
   const startInterview = async () => {
     setIsFirstLoad(false);
@@ -342,6 +373,9 @@ export default function App() {
     const selectedChat = chatHistory.find(c => c.id === chatId);
     if (selectedChat) {
       setChat(selectedChat.messages);
+      if (selectedChat.evaluationScores) {
+        setCurrentEvaluationScores(selectedChat.evaluationScores);
+      }
       setCurrentChatId(chatId);
       setHasAskedForNameAndBirth(selectedChat.messages.some(m => m.role === 'bot' && m.message.includes('nome e data di nascita')));
       setShowHistoryModal(false);
@@ -390,6 +424,66 @@ export default function App() {
 
     return lines;
   };
+  const extractScoreFromText = (text: string): number => {
+    const match = text.match(/Punteggio assegnato:\s*(\d)/);
+    if (match) {
+      const score = parseInt(match[1]);
+      return Math.max(0, Math.min(4, score));
+    }
+    return -1;
+  };
+
+const handleEvaluateSingleProblem = async (selectedProblem) => {
+  if (!selectedProblem || chat.length === 0) {
+    Alert.alert('Attenzione', 'Seleziona un fenomeno da valutare');
+    return;
+  }
+
+  const previousScore = currentEvaluationScores[selectedProblem.fenomeno] ?? -1;
+console.log('Punteggio precedente per ${selectedProblem.fenomeno}: previousScore');
+
+
+  setEvaluating(true);
+
+  try {
+    const prompt = `
+- Problematica: ${selectedProblem.fenomeno}
+- Descrizione: ${selectedProblem.descrizione}
+- Esempio: ${selectedProblem.esempio}
+- Punteggio TLDS: ${selectedProblem.punteggio}
+**Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
+**Valuta la presenza della problematica "${selectedProblem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
+**Modello di output:**
+${selectedProblem.modello_di_output}
+${previousScore >= 0
+  ? `NOTA: Il punteggio valutato precedentemente per questo fenomeno era: '${previousScore}' (su una scala da 0 a 4). Se il nuovo punteggio risulta significativamente diverso, segnalare un possibile cambiamento nella gravità del problema.`
+  : ''}
+
+Conversazione completa:
+${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
+
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    const match = text.match(/Punteggio Assegnato:\s*([0-4])/i);
+    if (match) {
+      const newScore = parseInt(match[1]);
+      setCurrentEvaluationScores(prev => ({
+        ...prev,
+        [selectedProblem.fenomeno]: newScore
+      }));
+    }
+    setChat(prev => [...prev, { role: 'bot', message: `**${selectedProblem.fenomeno}**\\n${text}` }]);
+  } catch (err) {
+    console.error('Errore durante la valutazione:', err);
+    Alert.alert('Errore', 'Valutazione fallita.');
+  } finally {
+    setEvaluating(false);
+  }
+};
+
 
   const handleEvaluateProblems = async () => {
     if (chat.length === 0) {
@@ -404,18 +498,22 @@ export default function App() {
       const evaluations = [];
 
       for (const problem of problemDetails) {
-        const prompt = `
-        - Problematica: ${problem.fenomeno}
-        - Descrizione: ${problem.descrizione}
-        - Esempio: ${problem.esempio}
-        - Punteggio TLDS: ${problem.punteggio}
-        **Se il tuo ultimo messaggio è una domanda, non considerare qusta nella valutazione.
-        **Valuta la presenza della problematica "${problem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
-        - Modello di output: ${problem.modello_di_output}
+          const previousScore = chatHistory
+            .find(c => c.id === currentChatId)?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
 
-        Conversazione completa:
-        ${chat.map(msg => `${msg.role}: ${msg.message}`).join('\n')}
-        `;
+       const prompt = `
+       - Problematica: ${problem.fenomeno}
+       - Descrizione: ${problem.descrizione}
+       - Esempio: ${problem.esempio}
+       - Punteggio TLDS: ${problem.punteggio}
+       **Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
+       **Valuta la presenza della problematica "${problem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
+       - Modello di output: ${problem.modello_di_output}
+       Conversazione completa:
+       ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
+       `;
+
+
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
@@ -484,7 +582,7 @@ export default function App() {
                             - Se il paziente esprime dubbi sulla domanda ricevuta, come magari "in che senso", o roba simile, rispiegagli la domanda.
                             - IMPORTANTE - REGOLA OBBLIGATORIA (DA ESEGUIRE SEMPRE, SENZA ECCEZIONI):
 
-                              Ogni volta che il paziente risponde affermativamente a una domanda in cui gli viene chiesto se gli capita qualcosa (es. “Ti capita mai di...”, “Succede che tu...”, “Hai notato che a volte...”), DEVI SEMPRE E SUBITO fare queste DUE DOMANDE DI APPROFONDIMENTO, senza saltarle mai:
+                              Ogni volta che il paziente risponde affermativamente a una domanda in cui gli viene chiesto se gli capita una problematica negativa particolare (es. “Ti capita mai di...”, “Succede che tu...”, “Hai notato che a volte...”), DEVI SEMPRE E SUBITO fare queste DUE DOMANDE DI APPROFONDIMENTO, senza saltarle mai:
 
                               1) Con quale frequenza ti succede?
                               2) Quanto ti dà fastidio o ti crea disagio?
@@ -582,6 +680,65 @@ export default function App() {
                 </View>
               )}
             </ScrollView>
+{chat.length > 0 && problemOptions.length > 0 && (
+  <View style={{ paddingHorizontal: 10, marginBottom: 10 }}>
+    <TouchableOpacity
+      style={{
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 5,
+        padding: 12,
+        backgroundColor: '#f5f5f5',
+      }}
+      onPress={() => setDropdownVisible(true)}
+    >
+      <Text style={{ color: '#333' }}>📋 Seleziona un fenomeno da valutare</Text>
+    </TouchableOpacity>
+
+    <Modal
+      visible={dropdownVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setDropdownVisible(false)}
+    >
+      <TouchableOpacity
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}
+        activeOpacity={1}
+        onPressOut={() => setDropdownVisible(false)}
+      >
+        <View
+          style={{
+            marginTop: 100,
+            marginHorizontal: 20,
+            backgroundColor: 'white',
+            borderRadius: 8,
+            padding: 10,
+            maxHeight: 300,
+          }}
+        >
+          <ScrollView>
+            {problemOptions.map((problem, index) => (
+              <TouchableOpacity
+                key={index}
+                style={{
+                  padding: 12,
+                  borderBottomWidth: 1,
+                  borderColor: '#eee',
+                }}
+                onPress={() => {
+                  setDropdownVisible(false);
+                  handleEvaluateSingleProblem(problem);
+                }}
+              >
+                <Text style={{ fontSize: 16 }}>{problem.fenomeno}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  </View>
+)}
 
             <View style={[styles.inputContainer, (loading || evaluating) && styles.disabledInput]}>
               <TextInput
