@@ -15,6 +15,7 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import ChatInput from './components/ChatInput';
 import ChatMessages from './components/ChatMessages';
 import ChatHeader from './components/ChatHeader';
 import { Picker } from '@react-native-picker/picker';
@@ -664,24 +665,13 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
              problemOptions={problemOptions}
              onEvaluateSingleProblem={handleEvaluateSingleProblem}
            />
-
-
-            <View style={[styles.inputContainer, (loading || evaluating) && styles.disabledInput]}>
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder="Scrivi un messaggio..."
-                style={styles.input}
-                multiline
-                editable={!loading && !evaluating}
-              />
-              <Button
-                title="Invia"
-                onPress={handleSend}
-                disabled={loading || evaluating || !input.trim()}
-              />
-            </View>
-
+            <ChatInput
+              input={input}
+              onChangeInput={setInput}
+              onSend={handleSend}
+              loading={loading}
+              evaluating={evaluating}
+            />
             <View style={styles.actionButtons}>
               <View style={[styles.evaluateButton, (loading || evaluating) && styles.disabledInput]}>
                 <Button
