@@ -15,6 +15,7 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import ExportModal from './components/ExportModal';
 import ChatInput from './components/ChatInput';
 import ChatMessages from './components/ChatMessages';
 import ChatHeader from './components/ChatHeader';
@@ -39,56 +40,6 @@ interface Chat {
   evaluationScores: { [fenomeno: string]: number }; // 👈 AGGIUNTO
 }
 
-
-const ExportModal = ({ visible, onClose, onSave }) => {
-  const [fileName, setFileName] = useState('');
-
-  useEffect(() => {
-    if (visible) {
-      setFileName(`Conversazione_${new Date().toISOString().split('T')[0]}`);
-    }
-  }, [visible]);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Salva conversazione</Text>
-
-          <TextInput
-            style={styles.fileNameInput}
-            value={fileName}
-            onChangeText={setFileName}
-            placeholder="Inserisci nome file"
-            autoFocus
-          />
-
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
-              onPress={onClose}
-            >
-              <Text style={styles.buttonText}>Annulla</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modalButton, styles.saveButton]}
-              onPress={() => onSave(fileName)}
-              disabled={!fileName.trim()}
-            >
-              <Text style={styles.buttonText}>Salva</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 export default function App() {
     const [dropdownVisible, setDropdownVisible] = useState(false);
