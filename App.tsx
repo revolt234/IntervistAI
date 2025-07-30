@@ -15,6 +15,8 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import ChatMessages from './components/ChatMessages';
+import ChatHeader from './components/ChatHeader';
 import { Picker } from '@react-native-picker/picker';
 import { API_KEY } from '@env';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -337,7 +339,7 @@ useEffect(() => {
     setIsFirstLoad(false);
     setLoading(true);
     try {
-      const prompt = 'Chiedimi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
+      const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
       setHasAskedForNameAndBirth(true);
 
       // Invia un messaggio nascosto all'utente che non verrà mostrato
@@ -633,17 +635,15 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setShowHistoryModal(true)} style={styles.historyButton}>
-          <Text style={styles.historyButtonText}>☰</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={startNewChat} style={styles.newChatButton}>
-          <Text style={styles.newChatButtonText}>+ Nuova Chat</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={toggleVoice} style={[styles.voiceButton, voiceEnabled && styles.voiceButtonActive]}>
-          <Text style={styles.voiceButtonText}>{voiceEnabled ? '🔊' : '🔇'}</Text>
-        </TouchableOpacity>
-      </View>
+
+
+      <ChatHeader
+        onToggleHistoryModal={() => setShowHistoryModal(true)}
+        onNewChat={startNewChat}
+        voiceEnabled={voiceEnabled}
+        onToggleVoice={toggleVoice}
+      />
+
 
       <View style={styles.chatContainer}>
         {isFirstLoad && chat.length === 0 ? (
@@ -657,88 +657,14 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
           </View>
         ) : (
           <>
-            <ScrollView
-              style={styles.chatScroll}
-              contentContainerStyle={styles.chatContent}
-              ref={chatScrollViewRef}
-              onContentSizeChange={() => chatScrollViewRef.current?.scrollToEnd({ animated: true })}
-            >
-              {chat
-                .filter(msg => msg.message !== 'INIZIO_INTERVISTA_NASCOSTO') // Nascondi il messaggio iniziale
-                .map((msg, index) => (
-                  <View
-                    key={index}
-                    style={[styles.message, msg.role === 'user' ? styles.user : styles.bot]}
-                  >
-                    <Text>{msg.message}</Text>
-                  </View>
-                ))}
-              {(loading || evaluating) && (
-                <View style={[styles.message, styles.bot]}>
-                  <ActivityIndicator size="small" color="#0000ff" />
-                  <Text>{evaluating ? 'Generando report...' : 'Caricando...'}</Text>
-                </View>
-              )}
-            </ScrollView>
-{chat.length > 0 && problemOptions.length > 0 && (
-  <View style={{ paddingHorizontal: 10, marginBottom: 10 }}>
-    <TouchableOpacity
-      style={{
-        borderWidth: 1,
-        borderColor: '#ccc',
-        borderRadius: 5,
-        padding: 12,
-        backgroundColor: '#f5f5f5',
-      }}
-      onPress={() => setDropdownVisible(true)}
-    >
-      <Text style={{ color: '#333' }}>📋 Seleziona un fenomeno da valutare</Text>
-    </TouchableOpacity>
+           <ChatMessages
+             chat={chat}
+             loading={loading}
+             evaluating={evaluating}
+             problemOptions={problemOptions}
+             onEvaluateSingleProblem={handleEvaluateSingleProblem}
+           />
 
-    <Modal
-      visible={dropdownVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setDropdownVisible(false)}
-    >
-      <TouchableOpacity
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}
-        activeOpacity={1}
-        onPressOut={() => setDropdownVisible(false)}
-      >
-        <View
-          style={{
-            marginTop: 100,
-            marginHorizontal: 20,
-            backgroundColor: 'white',
-            borderRadius: 8,
-            padding: 10,
-            maxHeight: 300,
-          }}
-        >
-          <ScrollView>
-            {problemOptions.map((problem, index) => (
-              <TouchableOpacity
-                key={index}
-                style={{
-                  padding: 12,
-                  borderBottomWidth: 1,
-                  borderColor: '#eee',
-                }}
-                onPress={() => {
-                  setDropdownVisible(false);
-                  handleEvaluateSingleProblem(problem);
-                }}
-              >
-                <Text style={{ fontSize: 16 }}>{problem.fenomeno}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  </View>
-)}
 
             <View style={[styles.inputContainer, (loading || evaluating) && styles.disabledInput]}>
               <TextInput
