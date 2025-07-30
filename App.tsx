@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   Text,
@@ -15,6 +15,7 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import HistoryModal from './components/HistoryModal';
 import ExportModal from './components/ExportModal';
 import ChatInput from './components/ChatInput';
 import ChatMessages from './components/ChatMessages';
@@ -28,6 +29,7 @@ import JsonFileReader from './android/app/src/services/JsonFileReader';
 import Tts from 'react-native-tts';
 import { captureRef } from 'react-native-view-shot';
 import { PDF, PDFPage, PDFText, PDFFont } from 'react-native-pdf';
+import { useChatManager } from './hooks/useChatManager'; // 👈 nuovo import
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -37,127 +39,52 @@ interface Chat {
   title: string;
   messages: { role: 'user' | 'bot'; message: string }[];
   createdAt: string;
-  evaluationScores: { [fenomeno: string]: number }; // 👈 AGGIUNTO
+  evaluationScores: { [fenomeno: string]: number };
 }
 
-
 export default function App() {
-    const [dropdownVisible, setDropdownVisible] = useState(false);
-  const [input, setInput] = useState('');
-  const [chat, setChat] = useState<{ role: 'user' | 'bot'; message: string }[]>([]);
-  const [questions, setQuestions] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [evaluating, setEvaluating] = useState(false);
-  const [hasAskedForNameAndBirth, setHasAskedForNameAndBirth] = useState(false);
-  const [chatHistory, setChatHistory] = useState<Chat[]>([]);
-  const [currentEvaluationScores, setCurrentEvaluationScores] = useState<{ [fenomeno: string]: number }>({});
+  // ✅ Hook personalizzato che gestisce tutta la logica chat
+  const {
+    chat, setChat,
+    input, setInput,
+    loading, setLoading,
+    evaluating, setEvaluating,
+    hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
+    chatHistory, setChatHistory,
+    currentChatId, setCurrentChatId,
+    currentEvaluationScores, setCurrentEvaluationScores,
+    askedQuestions, setAskedQuestions,
+    initialPromptSent, setInitialPromptSent,
+    questions,
+    sendMessage,
+    startNewChat,
+    startInterview,
+    saveChat
+  } = useChatManager();
+
+  // ✅ Stati locali NON gestiti dal manager
+  const [dropdownVisible, setDropdownVisible] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [currentChatId, setCurrentChatId] = useState<string>(Date.now().toString());
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [askedQuestions, setAskedQuestions] = useState<string[]>([]);
   const [exporting, setExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
-  const [initialPromptSent, setInitialPromptSent] = useState(false);
-  const chatScrollViewRef = React.useRef<ScrollView>(null);
-
-  useEffect(() => {
-    Tts.getInitStatus().then(() => {
-      Tts.setDefaultLanguage('it-IT');
-    });
-
-    const loadQuestions = async () => {
-      try {
-        const questions = await JsonFileReader.getRandomMedicalQuestions();
-        setQuestions(questions);
-       // Alert.alert('File salvato con successo', `Il file è stato salvato come: ${questions}`);
-      } catch (error) {
-        console.error('Errore nel caricamento delle domande:', error);
-        Alert.alert('Errore', 'Impossibile caricare le domande mediche.');
-      }
-    };
-
-    loadQuestions();
-  }, []);
-
-  useEffect(() => {
-    const loadChatHistory = async () => {
-      try {
-        const savedHistory = await AsyncStorage.getItem('chatHistory');
-        if (savedHistory) {
-          setChatHistory(JSON.parse(savedHistory));
-        }
-      } catch (error) {
-        console.error('Errore nel caricamento della cronologia:', error);
-      }
-    };
-
-    loadChatHistory();
-  }, []);
-
-  const saveChat = async () => {
-    if (chat.length === 0) return;
-
-    // Prendi il primo messaggio utente reale (non quello iniziale nascosto)
-    const firstUserMessage = chat.find(msg => msg.role === 'user' && !msg.message.includes('INIZIO_INTERVISTA_NASCOSTO'));
-    const chatTitle = firstUserMessage
-      ? firstUserMessage.message.substring(0, 30) + (firstUserMessage.message.length > 30 ? '...' : '')
-      : 'Nuova conversazione';
-
-   const updatedChat: Chat = {
-     id: currentChatId,
-     title: chatTitle,
-     messages: [...chat],
-     createdAt: new Date().toISOString(),
-     evaluationScores: currentEvaluationScores  // 👈 aggiunto qui!
-   };
+  const [problemOptions, setProblemOptions] = useState<any[]>([]);
+  const chatScrollViewRef = useRef<ScrollView>(null);
 
 
-    setChatHistory(prev => {
-      const existingIndex = prev.findIndex(c => c.id === currentChatId);
-      if (existingIndex >= 0) {
-        const newHistory = [...prev];
-        newHistory[existingIndex] = updatedChat;
-        return newHistory;
-      } else {
-        return [updatedChat, ...prev];
-      }
-    });
-  };
 
-  useEffect(() => {
-    saveChat();
-  }, [chat, currentChatId]);
 
-  useEffect(() => {
-    const saveChatHistory = async () => {
-      try {
-        await AsyncStorage.setItem('chatHistory', JSON.stringify(chatHistory));
-      } catch (error) {
-        console.error('Errore nel salvataggio della cronologia:', error);
-      }
-    };
 
-    if (chatHistory.length > 0) {
-      saveChatHistory();
-    }
-  }, [chatHistory]);
 
-  useEffect(() => {
-    if (voiceEnabled && chat.length > 0 && chat[chat.length - 1].role === 'bot') {
-      Tts.speak(chat[chat.length - 1].message);
-    }
-  }, [chat, voiceEnabled]);
 
-  useEffect(() => {
-    if (chat.length > 0 && chat[chat.length - 1].role === 'bot') {
-      const lastBotMessage = chat[chat.length - 1].message;
-      if (!lastBotMessage.includes("Con quale frequenza")&&!lastBotMessage.includes("crea disagio?")) {
-        setAskedQuestions(prev => [...prev, lastBotMessage]);
-      }
-    }
-  }, [chat]);
-const [problemOptions, setProblemOptions] = useState<any[]>([]);
+
+useEffect(() => {
+  if (voiceEnabled && chat.length > 0 && chat[chat.length - 1].role === 'bot') {
+    Tts.speak(chat[chat.length - 1].message);
+  }
+}, [chat, voiceEnabled]);
+
 
 useEffect(() => {
   const loadProblems = async () => {
@@ -262,62 +189,20 @@ useEffect(() => {
     setVoiceEnabled(!voiceEnabled);
   };
 
-  const startNewChat = async () => {
-    if (voiceEnabled) {
-      Tts.stop();
-    }
-
-    if (chat.length > 0) {
-      saveChat();
-    }
-
-    setChat([]);
-    setHasAskedForNameAndBirth(false);
-    setCurrentChatId(Date.now().toString());
-    setAskedQuestions([]);
-    setIsFirstLoad(false);
-    setInitialPromptSent(false);
-
-    // 👇 Inizializza punteggi a -1
-    const initialScores: { [key: string]: number } = {};
-    problemOptions.forEach(p => {
-      initialScores[p.fenomeno] = -1;
-    });
-    setCurrentEvaluationScores(initialScores);
-  };
+ const handleStartNewChat = () => {
+   if (voiceEnabled) {
+     Tts.stop();
+   }
+   startNewChat(); // <-- Questo è quello esportato da useChatManager
+ };
 
 
-  const startInterview = async () => {
-    setIsFirstLoad(false);
-    setLoading(true);
-    try {
-      const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
-      setHasAskedForNameAndBirth(true);
 
-      // Invia un messaggio nascosto all'utente che non verrà mostrato
-      const hiddenUserMessage = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO' };
-      setChat([hiddenUserMessage]);
+ const handleStartInterview = async () => {
+   setIsFirstLoad(false); // rimane fuori dal hook
+   await startInterview(); // chiama la funzione interna del useChatManager
+ };
 
-      const chatSession = model.startChat({
-        history: [{
-          role: 'user',
-          parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }],
-        }]
-      });
-
-      const result = await chatSession.sendMessage(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      setChat(prev => [...prev, { role: 'bot', message: text }]);
-      setInitialPromptSent(true);
-    } catch (err) {
-      console.error('Errore durante la richiesta a Gemini:', err);
-      setChat([{ role: 'bot', message: 'Errore durante la richiesta.' }]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadChat = (chatId: string) => {
     if (voiceEnabled) {
@@ -591,7 +476,7 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
 
       <ChatHeader
         onToggleHistoryModal={() => setShowHistoryModal(true)}
-        onNewChat={startNewChat}
+       onNewChat={handleStartNewChat}
         voiceEnabled={voiceEnabled}
         onToggleVoice={toggleVoice}
       />
@@ -602,7 +487,8 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
           <View style={styles.startInterviewContainer}>
             <TouchableOpacity
               style={styles.startInterviewButton}
-              onPress={startInterview}
+              onPress={handleStartInterview}
+
             >
               <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
             </TouchableOpacity>
