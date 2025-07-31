@@ -176,96 +176,6 @@ useEffect(() => {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-
-    const userMessage = { role: 'user', message: input };
-    setChat(prev => {
-      // Se è il primo messaggio reale dell'utente e c'è un messaggio nascosto, rimuovilo
-      if (!initialPromptSent && prev.length > 0 && prev[0].message === 'INIZIO_INTERVISTA_NASCOSTO') {
-        return [...prev.slice(1), userMessage];
-      }
-      return [...prev, userMessage];
-    });
-
-    setLoading(true);
-
-    try {
-      const chatHistoryForAI = chat.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.message }],
-      }));
-
-      chatHistoryForAI.push({
-        role: 'user',
-        parts: [{ text: input }],
-      });
-
-      let prompt = '';
-      if (!hasAskedForNameAndBirth) {
-        prompt = 'Chiedimi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
-        setHasAskedForNameAndBirth(true);
-      } else {
-          //Alert.alert('File salvato con successo', `Il file è stato salvato come: ${askedQuestions.join('\n\n,')}`);
-          //Alert.alert('File salvato con successo', `Il file è stato salvato come: ${questions}`);
-         prompt = `RISPOSTA PAZIENTE: ${input}
-                         ### TU DEVI SEGUIRE QUESTE REGOLE:
-                         Seguono 2 punti (punto 1 e punto 2), devi seguire sempre attentamente queste regole, senza mai tralasciare nulla al caso, tenendo in considerazione che devi dare priorità fondamentale al punto 1, e solo se non si ricade nelle sue casistiche passare al punto 2 (non includere messaggi aggiuntivi come "il paziente..."):
-                         punto 1. **Fase di controllo prima di considerare il punto 2:**
-                            - il paziente non ti ha fornito nome e data di nascita** Se mancano queste informazioni, **richiedile prima di procedere.**
-                            - Se il paziente ti ha chiesto qualcosa, come chiarimenti o altro, **rispondi prima di proseguire**.
-                            - Se il paziente esprime dubbi sulla domanda ricevuta, come magari "in che senso", o roba simile, rispiegagli la domanda.
-                            - IMPORTANTE - REGOLA OBBLIGATORIA (DA ESEGUIRE SEMPRE, SENZA ECCEZIONI):
-
-                              Ogni volta che il paziente risponde affermativamente a una domanda in cui gli viene chiesto se gli capita una problematica negativa particolare (es. “Ti capita mai di...”, “Succede che tu...”, “Hai notato che a volte...”), DEVI SEMPRE E SUBITO fare queste DUE DOMANDE DI APPROFONDIMENTO, senza saltarle mai:
-
-                              1) Con quale frequenza ti succede?
-                              2) Quanto ti dà fastidio o ti crea disagio?
-
-                              ⚠ NON DEVI CONTINUARE CON ALTRE DOMANDE fino a quando non hai posto queste due domande e hai ricevuto risposta.
-
-                              ⚠ ANCHE SE IL PAZIENTE SEMBRA AVERGIÀ DETTO QUALCOSA SU QUESTI ASPETTI, DEVI COMUNQUE CHIEDERE ESPLICITAMENTE ENTRAMBE LE DOMANDE OGNI VOLTA.
-
-                              ----------------------------------------
-                              ESEMPIO DI APPLICAZIONE CORRETTA:
-                              Domanda: Ti capita mai di sentirti agitato senza motivo?
-                              Risposta del paziente: Sì, ogni tanto mi capita.
-
-                              >> Allora DEVI chiedere:
-                              - Con quale frequenza ti succede?
-                              - Quanto ti dà fastidio o ti crea disagi?
-                              (SE LA DOMANDA PRECEDENTE ERA PROPRIO QUESTA NON CHIEDERLA DI NUOVO)
-
-                         ⚠ **IMPORTANTE:** Se si rientra nei criteri del punto 1 non considerare il punto 2, sono mutuamente esclusivi**.
-
-                         punto 2. **Qui sotto hai l'elenco delle domande numerate, senza prendere iniziative, devi scegliere la prima della lista che non hai già fatto, se segui le regole che seguono tutto andrà bene (ricorda questi passaggi bisogna farli solo e solo se hai avuto nome e data di nascita dal paziente):**
-                            - ${questions}
-                            - Segui esattamente l'ordine numerato, partendo dalla domanda 1 e seguendo l'ordine.
-                            - Non mischiare mai più frasi insieme, solo una dell'elenco deve essere presa.
-                            - Se necessario, **riformula la domanda** per renderla più chiara o adatta al contesto, per esempio non puoi dire un proverbio senza prima chiedergli di dirti il significato del proverbio.
-                            - Dalle domande disponibili per la scelta devi escludere quelle presenti in questo elenco:\n [${askedQuestions.join(',\n\n')}].
-                            - Se tutte le domande disponibili sono state fatte ringrazia il Paziente per aver risposto e concludi l'intervista (ESEMPIO:"Grazie per aver risposto, le domande sono finite")`;
-                       }
-
-      const chatSession = model.startChat({
-        history: chatHistoryForAI,
-      });
-
-      const result = await chatSession.sendMessage(prompt);
-      const response = await result.response;
-      const text = response.text();
-
-      setChat(prev => [...prev, { role: 'bot', message: text }]);
-      setInitialPromptSent(true);
-    } catch (err) {
-      console.error('Errore durante la richiesta a Gemini:', err);
-      setChat(prev => [...prev, { role: 'bot', message: 'Errore durante la richiesta.' }]);
-    } finally {
-      setLoading(false);
-      setInput('');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
 
@@ -301,7 +211,7 @@ useEffect(() => {
             <ChatInput
               input={input}
               onChangeInput={setInput}
-              onSend={handleSend}
+              onSend={sendMessage} // già fatto!
               loading={loading}
               evaluating={evaluating}
             />
