@@ -15,6 +15,7 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import { useEvaluationManager } from './hooks/useEvaluationManager';
 import HistoryModal from './components/HistoryModal';
 import ExportModal from './components/ExportModal';
 import ChatInput from './components/ChatInput';
@@ -61,6 +62,18 @@ export default function App() {
     startInterview,
     saveChat
   } = useChatManager();
+  const {
+    handleEvaluateSingleProblem,
+    handleEvaluateProblems,
+    extractScoreFromText
+  } = useEvaluationManager({
+    chat,
+    setChat,
+    chatHistory,
+    currentChatId,
+    setEvaluating,
+    setCurrentEvaluationScores
+  });
 
   // ✅ Stati locali NON gestiti dal manager
   const [dropdownVisible, setDropdownVisible] = useState(false);
@@ -262,122 +275,6 @@ useEffect(() => {
     }
 
     return lines;
-  };
-  const extractScoreFromText = (text: string): number => {
-    const match = text.match(/Punteggio assegnato:\s*(\d)/);
-    if (match) {
-      const score = parseInt(match[1]);
-      return Math.max(0, Math.min(4, score));
-    }
-    return -1;
-  };
-
-const handleEvaluateSingleProblem = async (selectedProblem) => {
-  if (!selectedProblem || chat.length === 0) {
-    Alert.alert('Attenzione', 'Seleziona un fenomeno da valutare');
-    return;
-  }
-
-  const previousScore = currentEvaluationScores[selectedProblem.fenomeno] ?? -1;
-console.log('Punteggio precedente per ${selectedProblem.fenomeno}: previousScore');
-
-
-  setEvaluating(true);
-
-  try {
-    const prompt = `
-- Problematica: ${selectedProblem.fenomeno}
-- Descrizione: ${selectedProblem.descrizione}
-- Esempio: ${selectedProblem.esempio}
-- Punteggio TLDS: ${selectedProblem.punteggio}
-**Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
-**Valuta la presenza della problematica "${selectedProblem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
-**Modello di output:**
-${selectedProblem.modello_di_output}
-${previousScore >= 0
-  ? `NOTA: Il punteggio valutato precedentemente per questo fenomeno era: '${previousScore}' (su una scala da 0 a 4). Se il nuovo punteggio risulta significativamente diverso, segnalare un possibile cambiamento nella gravità del problema.`
-  : ''}
-
-Conversazione completa:
-${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
-
-    `;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    const match = text.match(/Punteggio Assegnato:\s*([0-4])/i);
-    if (match) {
-      const newScore = parseInt(match[1]);
-      setCurrentEvaluationScores(prev => ({
-        ...prev,
-        [selectedProblem.fenomeno]: newScore
-      }));
-    }
-    setChat(prev => [...prev, { role: 'bot', message: `**${selectedProblem.fenomeno}**\\n${text}` }]);
-  } catch (err) {
-    console.error('Errore durante la valutazione:', err);
-    Alert.alert('Errore', 'Valutazione fallita.');
-  } finally {
-    setEvaluating(false);
-  }
-};
-
-
-  const handleEvaluateProblems = async () => {
-    if (chat.length === 0) {
-      Alert.alert('Attenzione', 'Non c\'è alcuna conversazione da valutare');
-      return;
-    }
-
-    setEvaluating(true);
-
-    try {
-      const problemDetails = await JsonFileReader.getProblemDetails();
-      const evaluations = [];
-
-      for (const problem of problemDetails) {
-          const previousScore = chatHistory
-            .find(c => c.id === currentChatId)?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
-
-       const prompt = `
-       - Problematica: ${problem.fenomeno}
-       - Descrizione: ${problem.descrizione}
-       - Esempio: ${problem.esempio}
-       - Punteggio TLDS: ${problem.punteggio}
-       **Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
-       **Valuta la presenza della problematica "${problem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
-       - Modello di output: ${problem.modello_di_output}
-       Conversazione completa:
-       ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
-       `;
-
-
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-
-        evaluations.push({
-          problem: problem.fenomeno,
-          evaluation: text || 'Nessuna valutazione disponibile.'
-        });
-      }
-
-      const formattedEvaluations = evaluations.map(e =>
-        `**${e.problem}**\n${e.evaluation}\n\n`
-      ).join('---\n');
-
-      setChat(prev => [
-        ...prev,
-        { role: 'bot', message: formattedEvaluations }
-      ]);
-    } catch (err) {
-      console.error('Errore durante la valutazione:', err);
-      Alert.alert('Errore', 'Si è verificato un errore durante la valutazione.');
-    } finally {
-      setEvaluating(false);
-    }
   };
 
   const handleSend = async () => {
