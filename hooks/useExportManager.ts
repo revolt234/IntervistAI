@@ -44,6 +44,18 @@ export const useExportManager = () => {
     }
   };
 
+  // ✅ Funzione per andare a capo ogni 6 parole
+  const splitTextIntoLines = (text: string, wordsPerLine: number = 6): string => {
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+
+    for (let i = 0; i < words.length; i += wordsPerLine) {
+      lines.push(words.slice(i, i + wordsPerLine).join(' '));
+    }
+
+    return lines.join('\n');
+  };
+
   const exportChatToFile = async (chat: Message[], fileName: string) => {
     setExporting(true);
 
@@ -63,7 +75,8 @@ export const useExportManager = () => {
 
       chat.forEach(msg => {
         const role = msg.role === 'user' ? 'PAZIENTE' : 'MEDICO';
-        content += `${role}:\n${msg.message}\n\n`;
+        const formattedMessage = splitTextIntoLines(msg.message, 6); // 👈 formato ogni 6 parole
+        content += `${role}:\n${formattedMessage}\n\n`;
       });
 
       const path = `${RNFS.DownloadDirectoryPath}/${fileName}`;
