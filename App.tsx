@@ -15,6 +15,7 @@ import {
   PermissionsAndroid,
   Platform
 } from 'react-native';
+import { useExportManager } from './hooks/useExportManager';
 import { useEvaluationManager } from './hooks/useEvaluationManager';
 import HistoryModal from './components/HistoryModal';
 import ExportModal from './components/ExportModal';
@@ -62,6 +63,7 @@ export default function App() {
     startInterview,
     saveChat
   } = useChatManager();
+  const { exporting, exportChatToFile } = useExportManager();
   const {
     handleEvaluateSingleProblem,
     handleEvaluateProblems,
@@ -79,7 +81,6 @@ export default function App() {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [problemOptions, setProblemOptions] = useState<any[]>([]);
@@ -113,87 +114,6 @@ useEffect(() => {
     loadProblems();
   }
 }, [chat]);
-
-  const requestStoragePermission = async () => {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    try {
-      if (Platform.Version >= 33) {
-        return true;
-      }
-
-      const writePermission = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        {
-          title: 'Permesso di archiviazione',
-          message: 'L\'app ha bisogno del permesso per salvare i file',
-          buttonPositive: 'Accetta',
-          buttonNegative: 'Rifiuta',
-        }
-      );
-
-      const readPermission = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-        {
-          title: 'Permesso di lettura',
-          message: 'L\'app ha bisogno del permesso per accedere ai file',
-          buttonPositive: 'Accetta',
-          buttonNegative: 'Rifiuta',
-        }
-      );
-
-      return (
-        writePermission === PermissionsAndroid.RESULTS.GRANTED &&
-        readPermission === PermissionsAndroid.RESULTS.GRANTED
-      );
-    } catch (err) {
-      console.warn('Errore richiesta permessi:', err);
-      return false;
-    }
-  };
-
-  const exportChatToPDF = async (fileName) => {
-    setShowExportModal(false);
-    setExporting(true);
-
-    try {
-      if (!fileName.endsWith('.txt')) {
-        fileName += '.txt';
-      }
-
-      const hasPermission = await requestStoragePermission();
-      if (!hasPermission) {
-        Alert.alert('Permesso negato', 'Per salvare il file è necessario concedere i permessi di archiviazione');
-        return;
-      }
-
-      let pdfContent = 'Conversazione Medico-Paziente\n\n';
-      pdfContent += `Data: ${new Date().toLocaleDateString()}\n\n`;
-
-      chat.forEach(msg => {
-        const role = msg.role === 'user' ? 'PAZIENTE' : 'MEDICO';
-        pdfContent += `${role}:\n${msg.message}\n\n`;
-      });
-
-      const downloadsPath = RNFS.DownloadDirectoryPath;
-      const filePath = `${downloadsPath}/${fileName}`;
-
-      await RNFS.writeFile(filePath, pdfContent, 'utf8');
-
-      if (Platform.OS === 'android') {
-        await RNFS.scanFile(filePath);
-      }
-
-      Alert.alert('File salvato con successo', `Il file è stato salvato come: ${fileName}`);
-    } catch (error) {
-      console.error('Errore creazione file:', error);
-      Alert.alert('Errore', 'Salvataggio file fallito');
-    } finally {
-      setExporting(false);
-    }
-  };
 
   const toggleVoice = () => {
     if (voiceEnabled) {
@@ -469,12 +389,11 @@ useEffect(() => {
         </SafeAreaView>
       </Modal>
 
-      <ExportModal
-        visible={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        onSave={exportChatToPDF}
-      />
-
+  <ExportModal
+    visible={showExportModal}
+    onClose={() => setShowExportModal(false)}
+    onSave={(fileName) => exportChatToFile(chat, fileName)}
+  />
       <Modal transparent={true} visible={evaluating || exporting}>
         <View style={styles.loadingModal}>
           <View style={styles.loadingContent}>
