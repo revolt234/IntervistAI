@@ -128,12 +128,34 @@ useEffect(() => {
 
 
 const handleImportTranscript = async () => {
-  const transcript = await importJsonFromSAF();
-  if (transcript) {
-    Alert.alert('OK', `Caricate ${transcript.length} battute dal file.`);
-    console.log('Transcript:', transcript);
-  }
-};
+    // Chiama la funzione che abbiamo corretto in precedenza
+    // Questa funzione apre il selettore di file nativo di Android
+    const transcript = await JsonFileReader.importTranscriptFromFile();
+
+    // Se l'utente non annulla e il file è valido...
+    if (transcript) {
+      // 1. Pulisce lo stato della chat precedente e prepara un nuovo ID
+      startNewChat();
+
+      // 2. Imposta i messaggi importati come contenuto della chat corrente
+      // Assicurati che il formato corrisponda a { role, message }
+      setChat(transcript.map(item => ({
+        role: item.role === 'medico' ? 'bot' : 'user', // Converte "medico" in "bot"
+        message: item.text,
+      })));
+
+      // 3. Indica all'app di mostrare la schermata della chat invece di quella iniziale
+      setIsFirstLoad(false);
+
+      // 4. Evita che il bot invii il suo messaggio di benvenuto, dato che stiamo caricando una chat esistente
+      setInitialPromptSent(true);
+
+      // 5. Comunica all'utente che l'importazione è avvenuta con successo
+      Alert.alert('Importazione Riuscita', `Sono state caricate ${transcript.length} battute dal file.`);
+
+      console.log('Trascrizione importata:', transcript);
+    }
+  };
 
 
 
@@ -225,6 +247,7 @@ const handleImportTranscript = async () => {
              input={input}
              onChangeInput={setInput}
              onSend={sendMessage}
+             onImport={handleImportTranscript} // <-- Commenta questa riga
              loading={loading}
              evaluating={evaluating}
            />

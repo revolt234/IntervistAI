@@ -1,8 +1,12 @@
+// File: JsonFileReader.ts (Versione finale e corretta)
+
 import { Platform, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
+// ✅ 1. Import 'pick' dalla NUOVA libreria corretta
+import { pick } from '@react-native-documents/picker';
 
 class JsonFileReader {
-  // ✅ 1. Estrae domande mediche da un file JSON casuale dagli asset
+  // ℹ️ Questa funzione non è stata modificata
   static async getRandomMedicalQuestions(): Promise<string[]> {
     try {
       if (Platform.OS !== 'android') throw new Error('Funziona solo su Android');
@@ -32,68 +36,45 @@ class JsonFileReader {
     }
   }
 
-  // ✅ 2. Importa un file JSON dal file system (senza permessi)
-   static async importTranscriptFromFile(): Promise<any[] | null> {
-       try {
-         if (Platform.OS !== 'android') {
-           Alert.alert('Solo Android', 'Questa funzione è disponibile solo su Android.');
-           return null;
-         }
+  // ✅ 2. Questa è la funzione CORRETTA e AGGIORNATA
+  static async importTranscriptFromFile(): Promise<any[] | null> {
+    try {
+      if (Platform.OS !== 'android') {
+        Alert.alert('Solo Android', 'Questa funzione è disponibile solo su Android.');
+        return null;
+      }
 
-         // 1. Trova tutti i file JSON nella directory
-         const directoryPath = RNFS.DownloadDirectoryPath;
-         const files = await RNFS.readDir(directoryPath);
+      // 2a. Usa 'pick' dalla nuova libreria e destruttura il risultato
+      const [file] = await pick({
+        type: 'application/json',
+      });
 
-         const jsonFiles = files.filter(file =>
-           file.name.toLowerCase().endsWith('.json') &&
-           file.isFile()
-         );
+      // 2b. Se l'utente annulla, 'file' sarà undefined, quindi usciamo
+      if (!file) {
+        console.log('User cancelled the file picker.');
+        return null;
+      }
 
-         if (jsonFiles.length === 0) {
-           Alert.alert('Nessun file', 'Non sono stati trovati file JSON nella directory Download.');
-           return null;
-         }
+      // 2c. Leggi il contenuto del file selezionato
+      const content = await RNFS.readFile(file.uri, 'utf8');
+      const parsed = JSON.parse(content);
 
-         // 2. Mostra un Alert con la selezione
-         const selectedFile = await new Promise<RNFS.ReadDirItem | null>((resolve) => {
-           const buttons = jsonFiles.map(file => ({
-             text: file.name,
-             onPress: () => resolve(file)
-           }));
+      if (!parsed.transcription || !Array.isArray(parsed.transcription)) {
+        Alert.alert('Errore', 'Il file non contiene dati di trascrizione validi.');
+        return null;
+      }
 
-           buttons.push({
-             text: 'Annulla',
-             onPress: () => resolve(null),
-             style: 'cancel'
-           });
+      return parsed.transcription;
 
-           Alert.alert(
-             'Seleziona un file JSON',
-             'Scegli il file da importare:',
-             buttons
-           );
-         });
+    } catch (error) {
+      // Non serve più 'DocumentPicker.isCancel', la gestione è più semplice
+      console.error('Errore durante l\'importazione:', error);
+      Alert.alert('Errore', 'Impossibile importare il file selezionato.');
+      return null;
+    }
+  }
 
-         if (!selectedFile) return null;
-
-         // 3. Leggi il file selezionato
-         const content = await RNFS.readFile(selectedFile.path, 'utf8');
-         const parsed = JSON.parse(content);
-
-         if (!parsed.transcription || !Array.isArray(parsed.transcription)) {
-           Alert.alert('Errore', 'Il file non contiene dati validi.');
-           return null;
-         }
-
-         return parsed.transcription;
-       } catch (error) {
-         console.error('Errore durante import:', error);
-         Alert.alert('Errore', 'Impossibile importare il file selezionato.');
-         return null;
-       }
-     }
-
-  // ✅ 3. Estrae problemi da jsonTald.json negli asset
+  // ℹ️ Questa funzione non è stata modificata
   static async getProblemDetails(): Promise<any[]> {
     try {
       if (Platform.OS !== 'android') throw new Error('Funziona solo su Android');
@@ -120,12 +101,11 @@ class JsonFileReader {
     }
   }
 
-  // 🔧 Legge file asset Android
+  // 🔧 Funzioni private (non modificate)
   private static async readAssetFile(path: string): Promise<string> {
     return await RNFS.readFileAssets(path, 'utf8');
   }
 
-  // 🔧 Ottiene elenco dei file da una cartella asset
   private static async getAssetsList(path: string): Promise<string[]> {
     const files = await RNFS.readDirAssets(path);
     return files.map(file => file.name);
