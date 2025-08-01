@@ -1,8 +1,10 @@
+
+
 import React, { useState, useEffect, useRef } from 'react';
+
 import {
   SafeAreaView,
   Text,
-  TextInput,
   Button,
   ScrollView,
   StyleSheet,
@@ -11,10 +13,9 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
-  Dimensions,
-  PermissionsAndroid,
   Platform
 } from 'react-native';
+
 import { useExportManager } from './hooks/useExportManager';
 import { useEvaluationManager } from './hooks/useEvaluationManager';
 import HistoryModal from './components/HistoryModal';
@@ -26,15 +27,10 @@ import { Picker } from '@react-native-picker/picker';
 import { API_KEY } from '@env';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import RNFS from 'react-native-fs';
 import JsonFileReader from './android/app/src/services/JsonFileReader';
 import Tts from 'react-native-tts';
-import { captureRef } from 'react-native-view-shot';
-import { PDF, PDFPage, PDFText, PDFFont } from 'react-native-pdf';
 import { useChatManager } from './hooks/useChatManager'; // 👈 nuovo import
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 interface Chat {
   id: string;
@@ -131,6 +127,17 @@ useEffect(() => {
 
 
 
+const handleImportTranscript = async () => {
+  const transcript = await importJsonFromSAF();
+  if (transcript) {
+    Alert.alert('OK', `Caricate ${transcript.length} battute dal file.`);
+    console.log('Transcript:', transcript);
+  }
+};
+
+
+
+
  const handleStartInterview = async () => {
    setIsFirstLoad(false); // rimane fuori dal hook
    await startInterview(); // chiama la funzione interna del useChatManager
@@ -188,19 +195,25 @@ useEffect(() => {
       />
 
 
-      <View style={styles.chatContainer}>
-        {isFirstLoad && chat.length === 0 ? (
-          <View style={styles.startInterviewContainer}>
-            <TouchableOpacity
-              style={styles.startInterviewButton}
-              onPress={handleStartInterview}
+     <View style={styles.chatContainer}>
+       {isFirstLoad && chat.length === 0 ? (
+         <View style={styles.startInterviewContainer}>
+           <TouchableOpacity
+             style={styles.startInterviewButton}
+             onPress={handleStartInterview}
+           >
+             <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
+           </TouchableOpacity>
 
-            >
-              <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
+           <TouchableOpacity
+             style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#FFC107' }]}
+             onPress={handleImportTranscript} // 👈 questa funzione deve essere definita sopra
+           >
+             <Text style={styles.startInterviewButtonText}>Valuta Intervista (JSON)</Text>
+           </TouchableOpacity>
+         </View>
+       ) : (
+         <>
            <ChatMessages
              chat={chat}
              loading={loading}
@@ -208,34 +221,35 @@ useEffect(() => {
              problemOptions={problemOptions}
              onEvaluateSingleProblem={handleEvaluateSingleProblem}
            />
-            <ChatInput
-              input={input}
-              onChangeInput={setInput}
-              onSend={sendMessage} // già fatto!
-              loading={loading}
-              evaluating={evaluating}
-            />
-            <View style={styles.actionButtons}>
-              <View style={[styles.evaluateButton, (loading || evaluating) && styles.disabledInput]}>
-                <Button
-                  title="Genera Report"
-                  onPress={handleEvaluateProblems}
-                  disabled={loading || evaluating || chat.length === 0}
-                  color="#4CAF50"
-                />
-              </View>
-              <View style={[styles.exportButton, (loading || evaluating || chat.length === 0) && styles.disabledInput]}>
-                <Button
-                  title={exporting ? "Esportando..." : "Esporta"}
-                  onPress={() => setShowExportModal(true)}
-                  disabled={loading || evaluating || chat.length === 0 || exporting}
-                  color="#FF5722"
-                />
-              </View>
-            </View>
-          </>
-        )}
-      </View>
+           <ChatInput
+             input={input}
+             onChangeInput={setInput}
+             onSend={sendMessage}
+             loading={loading}
+             evaluating={evaluating}
+           />
+           <View style={styles.actionButtons}>
+             <View style={[styles.evaluateButton, (loading || evaluating) && styles.disabledInput]}>
+               <Button
+                 title="Genera Report"
+                 onPress={handleEvaluateProblems}
+                 disabled={loading || evaluating || chat.length === 0}
+                 color="#4CAF50"
+               />
+             </View>
+             <View style={[styles.exportButton, (loading || evaluating || chat.length === 0) && styles.disabledInput]}>
+               <Button
+                 title={exporting ? "Esportando..." : "Esporta"}
+                 onPress={() => setShowExportModal(true)}
+                 disabled={loading || evaluating || chat.length === 0 || exporting}
+                 color="#FF5722"
+               />
+             </View>
+           </View>
+         </>
+       )}
+     </View>
+
 
       <Modal
         animationType="slide"
