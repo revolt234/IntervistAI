@@ -5,7 +5,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { API_KEY } from '@env';
 
 const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 export const useEvaluationManager = ({
   chat,
@@ -15,57 +15,66 @@ export const useEvaluationManager = ({
   setEvaluating,
   setCurrentEvaluationScores,
   avgTimeResponse,
-  avgResponseLength,       // ✅ nuovo
-  counterInterruption       // ✅ nuovo
+  avgResponseLength,
+  counterInterruption
 }) => {
 
+  // ✅ 1. FUNZIONE HELPER PER CENTRALIZZARE LA LOGICA DEI SUGGERIMENTI
+  const getHintsForProblem = (problem) => {
+    let timeHint = '';
+    let logorreaHint = '';
+
+    // Logica per "Pensiero Rallentato"
+    if (problem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined) {
+      timeHint = `**Nota da menzionare nella valutazione di Pensiero Rallentato:** Il paziente impiega in media **${avgTimeResponse.toFixed(2)} secondi** per rispondere alle domande del medico, questa metrica va considerata in maniera adeguata e pesata nell'assegnazione del punteggio.\n\n`;
+    }
+
+    // Logica per "Logorrea"
+    if (problem.fenomeno.toLowerCase().includes('logorrea')) {
+      if (avgResponseLength !== undefined && counterInterruption !== undefined) {
+        logorreaHint = `\n**Nota da menzionare nella valutazione di Logorrea:** Il paziente ha una lunghezza media delle risposte pari a **${avgResponseLength.toFixed(2)} parole**. Inoltre, interrompe il medico il **${(counterInterruption * 100).toFixed(1)}%** delle volte, queste metriche vanno considerate nell'assegnazione del punteggio.\n\n`;
+      }
+    }
+    return { timeHint, logorreaHint };
+  };
+
+
+  // ✅ 2. VALUTAZIONE SINGOLA, ORA PIÙ PULITA
   const handleEvaluateSingleProblem = useCallback(async (selectedProblem) => {
     if (!selectedProblem || chat.length === 0) {
       Alert.alert('Attenzione', 'Seleziona un fenomeno da valutare');
       return;
     }
 
-    const chatObj = chatHistory.find(c => c.id === currentChatId);
-    const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
-
-    if (avgTimeResponse == undefined)  {
-      Alert.alert('⚠️ Informazione mancante', 'avgTimeResponse non disponibile per questa chat.');
+    // --- Logica degli Alert (specifica per la valutazione singola) ---
+    if (selectedProblem.fenomeno.toLowerCase().includes('rallentato')) {
+        if (avgTimeResponse !== undefined) {
+            Alert.alert('⏱️ Metrica per Pensiero Rallentato', `Il paziente risponde in media in ${avgTimeResponse.toFixed(2)} secondi`);
+        } else {
+            Alert.alert('⚠️ Informazione mancante', 'avgTimeResponse non disponibile.');
+        }
     }
+    if (selectedProblem.fenomeno.toLowerCase().includes('logorrea')) {
+        let alertMsg = '';
+        if (avgResponseLength == null) alertMsg += '⚠️ Lunghezza media risposte NON disponibile.\n';
+        else alertMsg += `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
 
-    const isLogorrea = selectedProblem.fenomeno.toLowerCase().includes('logorrea');
-    let timeHint = '';
-    let logorreaHint = '';
+        if (counterInterruption == null) alertMsg += '⚠️ Interruzioni paziente NON disponibili.\n';
+        else alertMsg += `🔁 Interruzioni paziente: ${(counterInterruption * 100).toFixed(1)}% delle domande\n`;
 
-    if (selectedProblem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined) {
-        Alert.alert('⏱️ Tempo medio di risposta', `Il paziente risponde in media in ${avgTimeResponse.toFixed(2)} secondi`);
-      timeHint = `**Nota da menzionare nella valutazione di Pensiero Rallentato:** Il paziente impiega in media **${avgTimeResponse.toFixed(2)} secondi** per rispondere alle domande del medico, questa metrica va considerata in maniera adeguata e pesata nell'assegnazione del punteggio.\n\n`;
+        Alert.alert('📊 Metriche per Logorrea', alertMsg.trim());
     }
-
-    if (isLogorrea) {
-      let alertMsg = '';
-
-      if (avgResponseLength == null) {
-        alertMsg += '⚠️ Lunghezza media delle risposte NON disponibile.\n';
-      } else {
-        alertMsg += `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
-      }
-
-      if (counterInterruption == null) {
-        alertMsg += '⚠️ Interruzioni del paziente NON disponibili.\n';
-      } else {
-        alertMsg += `🔁 Interruzioni del paziente: ${(counterInterruption * 100).toFixed(1)}% delle domande\n`;
-      }
-
-      Alert.alert('📊 Metriche per logorrea', alertMsg.trim());
-
-      if (avgResponseLength !== undefined && counterInterruption !== undefined) {
-        logorreaHint = `\n**Nota da menzionare nella valutazione di Logorrea:** Il paziente ha una lunghezza media delle risposte pari a **${avgResponseLength.toFixed(2)} parole**. Inoltre, interrompe il medico il **${(counterInterruption * 100).toFixed(1)}%** delle volte, queste metriche  considerate nell'assegnazione del punteggio.\n\n`;
-      }
-    }
+    // --- Fine Logica Alert ---
 
     setEvaluating(true);
 
     try {
+      const chatObj = chatHistory.find(c => c.id === currentChatId);
+      const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
+
+      // Usa la funzione helper per ottenere i suggerimenti
+      const { timeHint, logorreaHint } = getHintsForProblem(selectedProblem);
+
       const prompt = `
 - Problematica: ${selectedProblem.fenomeno}
 - Descrizione: ${selectedProblem.descrizione}
@@ -76,13 +85,11 @@ ${timeHint}${logorreaHint}
 **Valuta la presenza della problematica "${selectedProblem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
 **Modello di output:**
 ${selectedProblem.modello_di_output}
-${previousScore >= 0
-  ? `\nNOTA: Il punteggio valutato precedentemente per questo fenomeno era: '${previousScore}' (su una scala da 0 a 4). Se il nuovo punteggio risulta significativamente diverso, segnalare un possibile cambiamento nella gravità del problema.`
-  : ''}
+${previousScore >= 0 ? `\nNOTA: Il punteggio valutato precedentemente per questo fenomeno era: '${previousScore}' (su una scala da 0 a 4).` : ''}
 Conversazione completa:
 ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
 `;
-
+      // ... resto della logica invariato
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
@@ -90,10 +97,7 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
 
       if (match) {
         const newScore = parseInt(match[1]);
-        setCurrentEvaluationScores(prev => ({
-          ...prev,
-          [selectedProblem.fenomeno]: newScore
-        }));
+        setCurrentEvaluationScores(prev => ({ ...prev, [selectedProblem.fenomeno]: newScore }));
       }
 
       setChat(prev => [...prev, { role: 'bot', message: `**${selectedProblem.fenomeno}**\n${text}` }]);
@@ -103,35 +107,41 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
     } finally {
       setEvaluating(false);
     }
-  }, [chat, chatHistory, currentChatId, avgTimeResponse]);
+  }, [chat, chatHistory, currentChatId, avgTimeResponse, avgResponseLength, counterInterruption]);
 
+
+  // ✅ 3. VALUTAZIONE COMPLETA, ORA USA LA STESSA LOGICA
   const handleEvaluateProblems = useCallback(async () => {
     if (chat.length === 0) {
       Alert.alert('Attenzione', 'Non c\'è alcuna conversazione da valutare');
       return;
     }
-
     setEvaluating(true);
 
     try {
-      const problemDetails = await JsonFileReader.getProblemDetails();
-
+      // Mostra un unico alert riassuntivo con tutte le metriche disponibili
+      let generalInfo = 'Metriche generali disponibili per la valutazione:\n\n';
+      let hasMetrics = false;
       if (avgTimeResponse !== undefined) {
-        Alert.alert('⏱️ Info Generale', `Tempo medio di risposta: ${avgTimeResponse.toFixed(2)} secondi`);
+        generalInfo += `⏱️ Tempo medio risposta: ${avgTimeResponse.toFixed(2)}s\n`;
+        hasMetrics = true;
       }
+      if (avgResponseLength !== undefined) {
+        generalInfo += `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
+        hasMetrics = true;
+      }
+      if (counterInterruption !== undefined) {
+        generalInfo += `🔁 Tasso interruzioni: ${(counterInterruption * 100).toFixed(1)}%\n`;
+        hasMetrics = true;
+      }
+      if(hasMetrics) Alert.alert('📊 Info Generali', generalInfo.trim());
 
+      const problemDetails = await JsonFileReader.getProblemDetails();
       const evaluations = [];
 
       for (const problem of problemDetails) {
-        const isLogorrea = problem.fenomeno.toLowerCase().includes('logorrea');
-
-        const timeHint = (problem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined)
-          ? `**Nota:** Il paziente impiega in media **${avgTimeResponse.toFixed(2)} secondi** per rispondere alle domande del medico.\n\n`
-          : '';
-
-        const logorreaHint = isLogorrea && avgResponseLength !== undefined && counterInterruption !== undefined
-          ? `\n**Nota da menzionare nella valutazione logorrea:** Il paziente ha una lunghezza media delle risposte pari a **${avgResponseLength.toFixed(2)} parole**. Inoltre, interrompe il medico in **${(counterInterruption * 100).toFixed(1)}%** delle volte.\n\n`
-          : '';
+        // Usa la funzione helper per ottenere i suggerimenti per ogni problema
+        const { timeHint, logorreaHint } = getHintsForProblem(problem);
 
         const prompt = `
 - Problematica: ${problem.fenomeno}
@@ -145,15 +155,11 @@ ${timeHint}${logorreaHint}
 Conversazione completa:
 ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
 `;
-
+        // ... resto della logica invariato
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text();
-
-        evaluations.push({
-          problem: problem.fenomeno,
-          evaluation: text || 'Nessuna valutazione disponibile.',
-        });
+        evaluations.push({ problem: problem.fenomeno, evaluation: text || 'Nessuna valutazione disponibile.' });
       }
 
       const formatted = evaluations.map(e => `**${e.problem}**\n${e.evaluation}\n\n`).join('---\n');
@@ -164,7 +170,7 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
     } finally {
       setEvaluating(false);
     }
-  }, [chat, avgTimeResponse]);
+  }, [chat, avgTimeResponse, avgResponseLength, counterInterruption]);
 
   const extractScoreFromText = (text: string): number => {
     const match = text.match(/Punteggio assegnato:\s*(\d)/i);
@@ -176,8 +182,8 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
   };
 
   return {
-    handleEvaluateSingleProblem,
-    handleEvaluateProblems,
-    extractScoreFromText
+      handleEvaluateSingleProblem,
+      handleEvaluateProblems,
+      extractScoreFromText
+    };
   };
-};
