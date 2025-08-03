@@ -26,13 +26,13 @@ export const useEvaluationManager = ({
 
     // Logica per "Pensiero Rallentato"
     if (problem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined) {
-      timeHint = `**Nota da menzionare nella valutazione di Pensiero Rallentato:** Il paziente impiega in media **${avgTimeResponse.toFixed(2)} secondi** per rispondere alle domande del medico, questa metrica va considerata in maniera adeguata e pesata nell'assegnazione del punteggio.\n\n`;
+      timeHint = `**Nota da menzionare sempre nella valutazione di Pensiero Rallentato: tempo medio delle risposte del paziente calcolato con metadati= ${avgTimeResponse.toFixed(2)}, se superiore a 2 secondi rafforza la presenza della problematica.\n`;
     }
 
     // Logica per "Logorrea"
     if (problem.fenomeno.toLowerCase().includes('logorrea')) {
       if (avgResponseLength !== undefined && counterInterruption !== undefined) {
-        logorreaHint = `\n**Nota da menzionare nella valutazione di Logorrea:** Il paziente ha una lunghezza media delle risposte pari a **${avgResponseLength.toFixed(2)} parole**. Inoltre, interrompe il medico il **${(counterInterruption * 100).toFixed(1)}%** delle volte, queste metriche vanno considerate nell'assegnazione del punteggio.\n\n`;
+        logorreaHint = `\n**Nota da menzionare sempre nella valutazione di Logorrea: Il paziente ha una lunghezza media delle risposte pari a **${avgResponseLength.toFixed(2)} parole**. Inoltre, interrompe il medico il **${(counterInterruption * 100).toFixed(1)}%** delle volte, queste metriche vanno considerate nell'assegnazione del punteggio.\n\n`;
       }
     }
     return { timeHint, logorreaHint };
