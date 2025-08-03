@@ -1,5 +1,5 @@
 
-
+//App.tsx
 import React, { useState, useEffect, useRef } from 'react';
 
 import {
@@ -33,15 +33,17 @@ import { useChatManager } from './hooks/useChatManager'; // 👈 nuovo import
 
 
 interface Chat {
-  id: string;
-  title: string;
-  messages: { role: 'user' | 'bot'; message: string }[];
-  createdAt: string;
-  evaluationScores: { [fenomeno: string]: number };
-}
+   id: string;
+   title: string;
+   messages: { role: 'user' | 'bot'; message: string }[];
+   createdAt: string;
+   evaluationScores: { [fenomeno: string]: number };
+   avgTimeResponse?: number;
+   avgResponseLength?: number;
+   counterInterruption?: number;
+ }
 
 export default function App() {
-  // ✅ Hook personalizzato che gestisce tutta la logica chat
   const {
     chat, setChat,
     input, setInput,
@@ -59,7 +61,23 @@ export default function App() {
     startInterview,
     saveChat
   } = useChatManager();
+
   const { exporting, exportChatToFile } = useExportManager();
+
+  // ✅ 1. DICHIARA LO STATO PER LE METRICHE TEMPORANEE
+  const [tempMetrics, setTempMetrics] = useState(null);
+
+  // ✅ 2. PASSA LE METRICHE CORRETTE A useEvaluationManager
+  const chatObj = chatHistory.find(c => c.id === currentChatId);
+
+  const metricsForEvaluation = currentChatId && currentChatId.startsWith('imported-')
+    ? tempMetrics
+    : {
+        avgTimeResponse: chatObj?.avgTimeResponse,
+        avgResponseLength: chatObj?.avgResponseLength,
+        counterInterruption: chatObj?.counterInterruption,
+      };
+
   const {
     handleEvaluateSingleProblem,
     handleEvaluateProblems,
@@ -70,10 +88,13 @@ export default function App() {
     chatHistory,
     currentChatId,
     setEvaluating,
-    setCurrentEvaluationScores
+    setCurrentEvaluationScores,
+    avgTimeResponse: metricsForEvaluation?.avgTimeResponse,
+    avgResponseLength: metricsForEvaluation?.avgResponseLength,
+    counterInterruption: metricsForEvaluation?.counterInterruption,
   });
 
-  // ✅ Stati locali NON gestiti dal manager
+  // Stati locali NON gestiti dal manager
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
@@ -128,35 +149,62 @@ useEffect(() => {
 
 
 const handleImportTranscript = async () => {
-    // Chiama la funzione che abbiamo corretto in precedenza
-    // Questa funzione apre il selettore di file nativo di Android
-    const transcript = await JsonFileReader.importTranscriptFromFile();
+  const result = await JsonFileReader.importTranscriptFromFile();
+  if (result) {
+    const {
+      transcript,
+      avgTimeResponse,
+      avgResponseLength,
+      counterInterruption,
+    } = result;
 
-    // Se l'utente non annulla e il file è valido...
-    if (transcript) {
-      // 1. Pulisce lo stato della chat precedente e prepara un nuovo ID
-      startNewChat();
+    const mappedMessages = transcript.map(item => ({
+      role: item.role === 'medico' ? 'bot' : 'user',
+      message: item.text,
+    }));
 
-      // 2. Imposta i messaggi importati come contenuto della chat corrente
-      // Assicurati che il formato corrisponda a { role, message }
-      setChat(transcript.map(item => ({
-        role: item.role === 'medico' ? 'bot' : 'user', // Converte "medico" in "bot"
-        message: item.text,
-      })));
+    // --- 👇 INIZIO MODIFICHE ---
 
-      // 3. Indica all'app di mostrare la schermata della chat invece di quella iniziale
-      setIsFirstLoad(false);
+    // 1. Crea un oggetto temporaneo per la chat importata
+    const importedChatObject = {
+      id: `imported-${Date.now()}`, // ID temporaneo per distinguerla
+      messages: mappedMessages,
+      // 2. Associa le metriche direttamente a questo oggetto temporaneo
+      avgTimeResponse: avgTimeResponse,
+      avgResponseLength: avgResponseLength,
+      counterInterruption: counterInterruption,
+      evaluationScores: {},
+    };
 
-      // 4. Evita che il bot invii il suo messaggio di benvenuto, dato che stiamo caricando una chat esistente
-      setInitialPromptSent(true);
+    // 3. Imposta lo stato dell'app per riflettere la chat importata
+    //    SENZA modificare chatHistory
+    setChat(importedChatObject.messages);
+    setCurrentChatId(importedChatObject.id); // Usa l'ID temporaneo
+    setCurrentEvaluationScores({}); // Resetta i punteggi
 
-      // 5. Comunica all'utente che l'importazione è avvenuta con successo
-      Alert.alert('Importazione Riuscita', `Sono state caricate ${transcript.length} battute dal file.`);
+    // 4. Salva le metriche in uno stato separato per passarle alla valutazione
+    //    Questo è il passaggio chiave per renderle disponibili!
+    //    Dovrai aggiungere questo nuovo stato in App.tsx:
+    //    const [tempMetrics, setTempMetrics] = useState(null);
+    setTempMetrics({
+      avgTimeResponse,
+      avgResponseLength,
+      counterInterruption,
+    });
 
-      console.log('Trascrizione importata:', transcript);
-    }
-  };
+    // --- 👆 FINE MODIFICHE ---
 
+    setIsFirstLoad(false);
+    setInitialPromptSent(true);
+    setAskedQuestions([]);
+    setHasAskedForNameAndBirth(true);
+
+    Alert.alert(
+      'Importazione Riuscita',
+      `Importate ${transcript.length} battute.\nTempo medio di risposta: ${avgTimeResponse.toFixed(2)}s\nLunghezza media: ${avgResponseLength.toFixed(2)} parole\nInterruzioni: ${(counterInterruption * 100).toFixed(1)}%`
+    );
+  }
+};
 
 
 
@@ -194,6 +242,7 @@ const handleImportTranscript = async () => {
     try {
       const updatedHistory = chatHistory.filter(chat => chat.id !== chatId);
       setChatHistory(updatedHistory);
+
       await AsyncStorage.setItem('chatHistory', JSON.stringify(updatedHistory));
 
       if (currentChatId === chatId) {
