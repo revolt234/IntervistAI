@@ -24,13 +24,6 @@
     {
       "speaker": "SPEAKER_01",
       "role": "medico",
-      "start": 131.36909375000002,
-      "end": 134.42346875,
-      "text": " Per esempio, mi puoi spiegare il significato di questi proverbi?"
-    },
-    {
-      "speaker": "SPEAKER_01",
-      "role": "medico",
       "start": 135.11534375000002,
       "end": 137.37659375,
       "text": " il significato di questo proverbio: chi va con lo zoppo impara a zoppicare."

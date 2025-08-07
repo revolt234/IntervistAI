@@ -70,13 +70,12 @@ export default function App() {
   // ✅ 2. PASSA LE METRICHE CORRETTE A useEvaluationManager
   const chatObj = chatHistory.find(c => c.id === currentChatId);
 
-  const metricsForEvaluation = currentChatId && currentChatId.startsWith('imported-')
-    ? tempMetrics
-    : {
-        avgTimeResponse: chatObj?.avgTimeResponse,
-        avgResponseLength: chatObj?.avgResponseLength,
-        counterInterruption: chatObj?.counterInterruption,
-      };
+  const metricsForEvaluation = tempMetrics ?? {
+    avgTimeResponse: chatObj?.avgTimeResponse,
+    avgResponseLength: chatObj?.avgResponseLength,
+    counterInterruption: chatObj?.counterInterruption,
+  };
+
 
   const {
     handleEvaluateSingleProblem,
@@ -158,10 +157,29 @@ const handleImportTranscript = async () => {
       counterInterruption,
     } = result;
 
-    const mappedMessages = transcript.map(item => ({
+    let mappedMessages = transcript.map(item => ({
       role: item.role === 'medico' ? 'bot' : 'user',
       message: item.text,
     }));
+
+    // ✅ Se il primo messaggio non è 'user', duplica il primo user e mettilo all'inizio
+    if (mappedMessages.length > 0 && mappedMessages[0].role !== 'user') {
+      const firstUserMsg = mappedMessages.find(m => m.role === 'user');
+      if (firstUserMsg) {
+        mappedMessages.unshift({
+          role: 'user',
+          message: 'Chat di '+firstUserMsg.message,
+        });
+      } else {
+        // fallback minimo
+        mappedMessages.unshift({
+          role: 'user',
+          message: '[Inizio conversazione con messaggio utente mancante]',
+        });
+      }
+    }
+
+
 
     // --- 👇 INIZIO MODIFICHE ---
 
@@ -176,11 +194,12 @@ const handleImportTranscript = async () => {
       evaluationScores: {},
     };
 
-    // 3. Imposta lo stato dell'app per riflettere la chat importata
-    //    SENZA modificare chatHistory
-    setChat(importedChatObject.messages);
-    setCurrentChatId(importedChatObject.id); // Usa l'ID temporaneo
-    setCurrentEvaluationScores({}); // Resetta i punteggi
+    // 3. Aggiunge i messaggi importati in fondo alla chat attuale
+    setChat(prev => [...prev, ...importedChatObject.messages]);
+
+    // Non cambiare currentChatId (resta nella chat attuale)
+    setCurrentEvaluationScores(prev => ({ ...prev })); // mantieni punteggi esistenti
+
 
     // 4. Salva le metriche in uno stato separato per passarle alla valutazione
     //    Questo è il passaggio chiave per renderle disponibili!

@@ -88,18 +88,26 @@ export const useChatManager = () => {
     });
   };
 
-  const startNewChat = () => {
+  const startNewChat = async () => {
     Tts.stop();
     if (chat.length > 0) saveChat();
+
     setChat([]);
     setInput('');
     setHasAskedForNameAndBirth(false);
     setCurrentChatId(Date.now().toString());
-    setAskedQuestions([]);
     setInitialPromptSent(false);
-    const scores: { [key: string]: number } = {};
-    setCurrentEvaluationScores(scores);
+    setCurrentEvaluationScores({});
+    setAskedQuestions([]); // ✅ Pulisce le domande fatte
+
+    try {
+      const newQuestions = await JsonFileReader.getRandomMedicalQuestions(); // ✅ Ripesca nuovo file
+      setQuestions(newQuestions); // ✅ Sovrascrive il vecchio array
+    } catch (error) {
+      console.error('Errore durante il caricamento delle nuove domande:', error);
+    }
   };
+
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -115,10 +123,13 @@ export const useChatManager = () => {
     setLoading(true);
 
     try {
-      const chatHistoryForAI = chat.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.message }],
-      }));
+      const chatHistoryForAI = chat
+        .filter(msg => msg && (msg.role === 'user' || msg.role === 'bot') && typeof msg.message === 'string')
+        .map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.message }],
+        }));
+
 
       chatHistoryForAI.push({
         role: 'user',

@@ -69,8 +69,17 @@ export const useEvaluationManager = ({
     setEvaluating(true);
 
     try {
-      const chatObj = chatHistory.find(c => c.id === currentChatId);
-      const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
+     const chatObj = chatHistory.find(c => c.id === currentChatId);
+     const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
+
+     // 🔔 Alert di debug per vedere il punteggio precedente
+     Alert.alert(
+       '🧠 Punteggio Precedente',
+       previousScore >= 0
+         ? `Il punteggio già assegnato per "${selectedProblem.fenomeno}" è: ${previousScore}`
+         : 'Nessun punteggio precedente disponibile per questo fenomeno.'
+     );
+
 
       // Usa la funzione helper per ottenere i suggerimenti
       const { timeHint, logorreaHint } = getHintsForProblem(selectedProblem);
@@ -81,11 +90,11 @@ export const useEvaluationManager = ({
 - Esempio: ${selectedProblem.esempio}
 - Punteggio TLDS: ${selectedProblem.punteggio}
 ${timeHint}${logorreaHint}
+${previousScore >= 0 ? `\nNOTA da menzionare sempre: menziona sempre esplicitamente il valore precedente che è: '${previousScore}' (su una scala da 0 a 4), indicando se è maggiore o minore di quello attuale.` : ''}
 **Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
-**Valuta la presenza della problematica "${selectedProblem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
+**Valuta la presenza della problematica "${selectedProblem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello, nella risposta includi anche le note che ti ho appena fornito:**
 **Modello di output:**
 ${selectedProblem.modello_di_output}
-${previousScore >= 0 ? `\nNOTA: Il punteggio valutato precedentemente per questo fenomeno era: '${previousScore}' (su una scala da 0 a 4).` : ''}
 Conversazione completa:
 ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
 `;
