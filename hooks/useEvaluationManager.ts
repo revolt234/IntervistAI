@@ -1,11 +1,13 @@
+/* useEvaluationManager.ts */
 import { useCallback } from 'react';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import JsonFileReader from '../android/app/src/services/JsonFileReader';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { API_KEY } from '@env';
 
 const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 export const useEvaluationManager = ({
   chat,
@@ -16,72 +18,73 @@ export const useEvaluationManager = ({
   setCurrentEvaluationScores,
   avgTimeResponse,
   avgResponseLength,
-  counterInterruption
+  counterInterruption,
+  setChatHistory, // <- serve per salvare e poi persistere
 }) => {
-
-  // ✅ 1. FUNZIONE HELPER PER CENTRALIZZARE LA LOGICA DEI SUGGERIMENTI
+  // Helper note dinamiche per fenomeno
   const getHintsForProblem = (problem) => {
     let timeHint = '';
     let logorreaHint = '';
 
-    // Logica per "Pensiero Rallentato"
     if (problem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined) {
-      timeHint = `**Nota da menzionare sempre nella valutazione di Pensiero Rallentato: tempo medio delle risposte del paziente calcolato con metadati= ${avgTimeResponse.toFixed(2)}, se superiore a 2 secondi rafforza la presenza della problematica.\n`;
+      timeHint =
+        `**Nota da menzionare sempre nella valutazione di Pensiero Rallentato: ` +
+        `tempo medio delle risposte del paziente calcolato con metadati = ${avgTimeResponse.toFixed(2)}s. ` +
+        `Se > 2 secondi rafforza la presenza della problematica.**\n`;
     }
 
-    // Logica per "Logorrea"
     if (problem.fenomeno.toLowerCase().includes('logorrea')) {
       if (avgResponseLength !== undefined && counterInterruption !== undefined) {
-        logorreaHint = `\n**Nota da menzionare sempre nella valutazione di Logorrea: Il paziente ha una lunghezza media delle risposte pari a **${avgResponseLength.toFixed(2)} parole**. Inoltre, interrompe il medico il **${(counterInterruption * 100).toFixed(1)}%** delle volte, queste metriche vanno considerate nell'assegnazione del punteggio.\n\n`;
+        logorreaHint =
+          `\n**Nota da menzionare sempre nella valutazione di Logorrea:** ` +
+          `Lunghezza media risposte ${avgResponseLength.toFixed(2)} parole; ` +
+          `interrompe il medico nel ${(counterInterruption * 100).toFixed(1)}% dei casi. ` +
+          `Considera queste metriche nell'assegnazione del punteggio.\n\n`;
       }
     }
     return { timeHint, logorreaHint };
   };
 
-
-  // ✅ 2. VALUTAZIONE SINGOLA, ORA PIÙ PULITA
+  // ------- Valutazione singolo fenomeno -------
   const handleEvaluateSingleProblem = useCallback(async (selectedProblem) => {
     if (!selectedProblem || chat.length === 0) {
       Alert.alert('Attenzione', 'Seleziona un fenomeno da valutare');
       return;
     }
 
-    // --- Logica degli Alert (specifica per la valutazione singola) ---
+    // Alert metriche dedicate
     if (selectedProblem.fenomeno.toLowerCase().includes('rallentato')) {
-        if (avgTimeResponse !== undefined) {
-            Alert.alert('⏱️ Metrica per Pensiero Rallentato', `Il paziente risponde in media in ${avgTimeResponse.toFixed(2)} secondi`);
-        } else {
-            Alert.alert('⚠️ Informazione mancante', 'avgTimeResponse non disponibile.');
-        }
+      if (avgTimeResponse !== undefined) {
+        Alert.alert('⏱️ Metrica per Pensiero Rallentato', `Tempo medio risposte: ${avgTimeResponse.toFixed(2)}s`);
+      } else {
+        Alert.alert('⚠️ Informazione mancante', 'avgTimeResponse non disponibile.');
+      }
     }
     if (selectedProblem.fenomeno.toLowerCase().includes('logorrea')) {
-        let alertMsg = '';
-        if (avgResponseLength == null) alertMsg += '⚠️ Lunghezza media risposte NON disponibile.\n';
-        else alertMsg += `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
-
-        if (counterInterruption == null) alertMsg += '⚠️ Interruzioni paziente NON disponibili.\n';
-        else alertMsg += `🔁 Interruzioni paziente: ${(counterInterruption * 100).toFixed(1)}% delle domande\n`;
-
-        Alert.alert('📊 Metriche per Logorrea', alertMsg.trim());
+      let msg = '';
+      msg += avgResponseLength == null
+        ? '⚠️ Lunghezza media risposte NON disponibile.\n'
+        : `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
+      msg += counterInterruption == null
+        ? '⚠️ Interruzioni paziente NON disponibili.\n'
+        : `🔁 Interruzioni paziente: ${(counterInterruption * 100).toFixed(1)}% delle domande\n`;
+      Alert.alert('📊 Metriche per Logorrea', msg.trim());
     }
-    // --- Fine Logica Alert ---
 
     setEvaluating(true);
 
     try {
-     const chatObj = chatHistory.find(c => c.id === currentChatId);
-     const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
+      const chatObj = chatHistory.find(c => c.id === currentChatId);
+      const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
 
-     // 🔔 Alert di debug per vedere il punteggio precedente
-     Alert.alert(
-       '🧠 Punteggio Precedente',
-       previousScore >= 0
-         ? `Il punteggio già assegnato per "${selectedProblem.fenomeno}" è: ${previousScore}`
-         : 'Nessun punteggio precedente disponibile per questo fenomeno.'
-     );
+      // ✅ Manteniamo questo alert (lo volevi conservare)
+      Alert.alert(
+        '🧠 Punteggio Precedente',
+        previousScore >= 0
+          ? `Il punteggio già assegnato per "${selectedProblem.fenomeno}" è: ${previousScore}`
+          : 'Nessun punteggio precedente disponibile per questo fenomeno.'
+      );
 
-
-      // Usa la funzione helper per ottenere i suggerimenti
       const { timeHint, logorreaHint } = getHintsForProblem(selectedProblem);
 
       const prompt = `
@@ -90,25 +93,66 @@ export const useEvaluationManager = ({
 - Esempio: ${selectedProblem.esempio}
 - Punteggio TLDS: ${selectedProblem.punteggio}
 ${timeHint}${logorreaHint}
-${previousScore >= 0 ? `\nNOTA da menzionare sempre: menziona sempre esplicitamente il valore precedente che è: '${previousScore}' (su una scala da 0 a 4), indicando se è maggiore o minore di quello attuale.` : ''}
+${previousScore >= 0
+  ? `\nNOTA: menziona sempre esplicitamente il valore precedente '${previousScore}' (0–4) e se è maggiore/minore dell’attuale.`
+  : ''
+}
 **Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
-**Valuta la presenza della problematica "${selectedProblem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello, nella risposta includi anche le note che ti ho appena fornito:**
+**Valuta la presenza della problematica "${selectedProblem.fenomeno}" nelle risposte del paziente, usando il seguente modello e includendo le note fornite:**
 **Modello di output:**
 ${selectedProblem.modello_di_output}
+
 Conversazione completa:
-${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
+${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).join('\n')}
 `;
-      // ... resto della logica invariato
+
+      // Chiamata al modello
       const result = await model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
-      const match = text.match(/Punteggio Assegnato:\s*([0-4])/i);
 
-      if (match) {
-        const newScore = parseInt(match[1]);
+      // Estrai punteggio 0..4
+      const newScore = extractScoreFromText(text);
+
+      if (newScore >= 0) {
+        // 1) aggiorna punteggi correnti
         setCurrentEvaluationScores(prev => ({ ...prev, [selectedProblem.fenomeno]: newScore }));
+
+        // 2) salva su chatHistory (append, non overwrite) + persisti
+        const idx = chatHistory.findIndex(c => c.id === currentChatId);
+        if (idx !== -1) {
+          const updated = [...chatHistory];
+          const curr = { ...updated[idx] };
+
+          curr.evaluationLog = curr.evaluationLog ?? {};
+          const list = curr.evaluationLog[selectedProblem.fenomeno] ?? [];
+          list.push({ score: newScore, timestamp: Date.now() }); // <- APPEND, non overwrite
+          curr.evaluationLog[selectedProblem.fenomeno] = list;
+
+          curr.evaluationScores = {
+            ...curr.evaluationScores,
+            [selectedProblem.fenomeno]: newScore,
+          };
+
+          updated[idx] = curr;
+          setChatHistory(updated);
+          try {
+            await AsyncStorage.setItem('chatHistory', JSON.stringify(updated));
+          } catch (e) {
+            console.warn('Persistenza chatHistory fallita:', e);
+          }
+
+          // 🔎 DEBUG: stampa TUTTO lo storico aggiornato
+          Alert.alert(
+            `DEBUG singolo • ${selectedProblem.fenomeno}`,
+            `Nuovo punteggio: ${newScore}\n\nevaluationLog:\n${JSON.stringify(curr.evaluationLog, null, 2)}`
+          );
+          console.log('DEBUG [single] saved score', selectedProblem.fenomeno, newScore);
+          console.log('DEBUG [single] evaluationLog', curr.evaluationLog);
+        }
       }
 
+      // 3) append messaggio col testo della valutazione
       setChat(prev => [...prev, { role: 'bot', message: `**${selectedProblem.fenomeno}**\n${text}` }]);
     } catch (err) {
       console.error('Errore durante la valutazione:', err);
@@ -116,19 +160,29 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
     } finally {
       setEvaluating(false);
     }
-  }, [chat, chatHistory, currentChatId, avgTimeResponse, avgResponseLength, counterInterruption]);
+  }, [
+    chat,
+    chatHistory,
+    currentChatId,
+    avgTimeResponse,
+    avgResponseLength,
+    counterInterruption,
+    setEvaluating,
+    setCurrentEvaluationScores,
+    setChatHistory,
+  ]);
 
-
-  // ✅ 3. VALUTAZIONE COMPLETA, ORA USA LA STESSA LOGICA
+  // ------- Valutazione completa (tutti i fenomeni) -------
   const handleEvaluateProblems = useCallback(async () => {
     if (chat.length === 0) {
-      Alert.alert('Attenzione', 'Non c\'è alcuna conversazione da valutare');
+      Alert.alert('Attenzione', 'Non c’è alcuna conversazione da valutare');
       return;
     }
+
     setEvaluating(true);
 
     try {
-      // Mostra un unico alert riassuntivo con tutte le metriche disponibili
+      // Riepilogo metriche
       let generalInfo = 'Metriche generali disponibili per la valutazione:\n\n';
       let hasMetrics = false;
       if (avgTimeResponse !== undefined) {
@@ -143,13 +197,14 @@ ${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message
         generalInfo += `🔁 Tasso interruzioni: ${(counterInterruption * 100).toFixed(1)}%\n`;
         hasMetrics = true;
       }
-      if(hasMetrics) Alert.alert('📊 Info Generali', generalInfo.trim());
+      if (hasMetrics) Alert.alert('📊 Info Generali', generalInfo.trim());
 
       const problemDetails = await JsonFileReader.getProblemDetails();
-      const evaluations = [];
+      const evaluations: Array<{ problem: string; evaluation: string }> = [];
+
+      const newCurrentScores: { [fenomeno: string]: number } = {};
 
       for (const problem of problemDetails) {
-        // Usa la funzione helper per ottenere i suggerimenti per ogni problema
         const { timeHint, logorreaHint } = getHintsForProblem(problem);
 
         const prompt = `
@@ -161,38 +216,89 @@ ${timeHint}${logorreaHint}
 **Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
 **Valuta la presenza della problematica "${problem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
 - Modello di output: ${problem.modello_di_output}
+
 Conversazione completa:
-${chat.map(msg => `${msg.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${msg.message}`).join('\n')}
+${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).join('\n')}
 `;
-        // ... resto della logica invariato
+
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
-        evaluations.push({ problem: problem.fenomeno, evaluation: text || 'Nessuna valutazione disponibile.' });
+        const text = response.text() || 'Nessuna valutazione disponibile.';
+        evaluations.push({ problem: problem.fenomeno, evaluation: text });
+
+        const score = extractScoreFromText(text);
+        if (score >= 0) {
+          newCurrentScores[problem.fenomeno] = score;
+
+          const idx = chatHistory.findIndex(c => c.id === currentChatId);
+          if (idx !== -1) {
+            const updated = [...chatHistory];
+            const curr = { ...updated[idx] };
+
+            curr.evaluationLog = curr.evaluationLog ?? {};
+            const list = curr.evaluationLog[problem.fenomeno] ?? [];
+            list.push({ score, timestamp: Date.now() }); // <- APPEND
+            curr.evaluationLog[problem.fenomeno] = list;
+
+            curr.evaluationScores = { ...curr.evaluationScores, [problem.fenomeno]: score };
+
+            updated[idx] = curr;
+            setChatHistory(updated);
+            try {
+              await AsyncStorage.setItem('chatHistory', JSON.stringify(updated));
+            } catch (e) {
+              console.warn('Persistenza chatHistory fallita (bulk):', e);
+            }
+
+            // 🔎 DEBUG per ogni fenomeno
+            Alert.alert(
+              `DEBUG bulk • ${problem.fenomeno}`,
+              `Nuovo punteggio: ${score}\n\nevaluationLog:\n${JSON.stringify(curr.evaluationLog, null, 2)}`
+            );
+            console.log('DEBUG [bulk] saved score', problem.fenomeno, score);
+            console.log('DEBUG [bulk] evaluationLog', curr.evaluationLog);
+          }
+        }
       }
 
-      const formatted = evaluations.map(e => `**${e.problem}**\n${e.evaluation}\n\n`).join('---\n');
+      if (Object.keys(newCurrentScores).length > 0) {
+        setCurrentEvaluationScores(prev => ({ ...prev, ...newCurrentScores }));
+      }
+
+      const formatted = evaluations
+        .map(e => `**${e.problem}**\n${e.evaluation}\n\n`)
+        .join('---\n');
+
       setChat(prev => [...prev, { role: 'bot', message: formatted }]);
     } catch (err) {
-      console.error('Errore durante la valutazione:', err);
+      console.error('Errore nella generazione del report:', err);
       Alert.alert('Errore', 'Errore nella generazione del report.');
     } finally {
       setEvaluating(false);
     }
-  }, [chat, avgTimeResponse, avgResponseLength, counterInterruption]);
+  }, [
+    chat,
+    avgTimeResponse,
+    avgResponseLength,
+    counterInterruption,
+    chatHistory,
+    currentChatId,
+    setEvaluating,
+    setCurrentEvaluationScores,
+    setChatHistory,
+  ]);
 
+  // Estrazione punteggio (accetta "Assegnato" o "assegnato")
   const extractScoreFromText = (text: string): number => {
-    const match = text.match(/Punteggio assegnato:\s*(\d)/i);
-    if (match) {
-      const score = parseInt(match[1]);
-      return Math.max(0, Math.min(4, score));
-    }
-    return -1;
+    const match = text.match(/Punteggio\s*[Aa]ssegnato:\s*([0-4])/);
+    if (!match) return -1;
+    const score = parseInt(match[1], 10);
+    return Number.isNaN(score) ? -1 : Math.max(0, Math.min(4, score));
   };
 
   return {
-      handleEvaluateSingleProblem,
-      handleEvaluateProblems,
-      extractScoreFromText
-    };
+    handleEvaluateSingleProblem,
+    handleEvaluateProblems,
+    extractScoreFromText,
   };
+};

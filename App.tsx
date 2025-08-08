@@ -15,7 +15,7 @@ import {
   Modal,
   Platform
 } from 'react-native';
-
+import ChartsReportExport from './components/ChartsReportExport'; // default import (senza graffe)
 import { useExportManager } from './hooks/useExportManager';
 import { useEvaluationManager } from './hooks/useEvaluationManager';
 import HistoryModal from './components/HistoryModal';
@@ -33,15 +33,19 @@ import { useChatManager } from './hooks/useChatManager'; // 👈 nuovo import
 
 
 interface Chat {
-   id: string;
-   title: string;
-   messages: { role: 'user' | 'bot'; message: string }[];
-   createdAt: string;
-   evaluationScores: { [fenomeno: string]: number };
-   avgTimeResponse?: number;
-   avgResponseLength?: number;
-   counterInterruption?: number;
- }
+  id: string;
+  title: string;
+  messages: { role: 'user' | 'bot'; message: string }[];
+  createdAt: string;
+  evaluationScores: { [fenomeno: string]: number };
+  // 👇 nuovo
+  evaluationLog?: {
+    [fenomeno: string]: Array<{ score: number; timestamp: number }>;
+  };
+  avgTimeResponse?: number;
+  avgResponseLength?: number;
+  counterInterruption?: number;
+}
 
 export default function App() {
   const {
@@ -61,7 +65,7 @@ export default function App() {
     startInterview,
     saveChat
   } = useChatManager();
-
+const [showChartsModal, setShowChartsModal] = useState(false);
   const { exporting, exportChatToFile } = useExportManager();
 
   // ✅ 1. DICHIARA LO STATO PER LE METRICHE TEMPORANEE
@@ -77,21 +81,23 @@ export default function App() {
   };
 
 
-  const {
-    handleEvaluateSingleProblem,
-    handleEvaluateProblems,
-    extractScoreFromText
-  } = useEvaluationManager({
-    chat,
-    setChat,
-    chatHistory,
-    currentChatId,
-    setEvaluating,
-    setCurrentEvaluationScores,
-    avgTimeResponse: metricsForEvaluation?.avgTimeResponse,
-    avgResponseLength: metricsForEvaluation?.avgResponseLength,
-    counterInterruption: metricsForEvaluation?.counterInterruption,
-  });
+ const {
+   handleEvaluateSingleProblem,
+   handleEvaluateProblems,
+   extractScoreFromText
+ } = useEvaluationManager({
+   chat,
+   setChat,
+   chatHistory,
+   currentChatId,
+   setEvaluating,
+   setCurrentEvaluationScores,
+   avgTimeResponse: metricsForEvaluation?.avgTimeResponse,
+   avgResponseLength: metricsForEvaluation?.avgResponseLength,
+   counterInterruption: metricsForEvaluation?.counterInterruption,
+   // 👇 AGGIUNGI QUESTO
+   setChatHistory,
+ });
 
   // Stati locali NON gestiti dal manager
   const [dropdownVisible, setDropdownVisible] = useState(false);
@@ -329,6 +335,14 @@ const handleImportTranscript = async () => {
                />
              </View>
              <View style={[styles.exportButton, (loading || evaluating || chat.length === 0) && styles.disabledInput]}>
+                 <Button
+                   title="Esporta Grafici"
+                   onPress={() => setShowChartsModal(true)}
+                   disabled={loading || evaluating || chat.length === 0}
+                   color="#2196F3"
+                 />
+               </View>
+             <View style={[styles.exportButton, (loading || evaluating || chat.length === 0) && styles.disabledInput]}>
                <Button
                  title={exporting ? "Esportando..." : "Esporta"}
                  onPress={() => setShowExportModal(true)}
@@ -340,6 +354,29 @@ const handleImportTranscript = async () => {
          </>
        )}
      </View>
+<Modal
+  animationType="slide"
+  transparent={false}
+  visible={showChartsModal}
+  onRequestClose={() => setShowChartsModal(false)}
+>
+  <SafeAreaView style={styles.modalContainer}>
+    <View style={styles.modalHeader}>
+      <Text style={styles.modalTitle}>Report Grafici</Text>
+      <TouchableOpacity onPress={() => setShowChartsModal(false)}>
+        <Text style={styles.closeButton}>✕</Text>
+      </TouchableOpacity>
+    </View>
+
+    <ScrollView style={styles.modalContent}>
+      <ChartsReportExport
+        problems={problemOptions}
+        evaluationLog={chatHistory.find(c => c.id === currentChatId)?.evaluationLog}
+        onSaved={() => setShowChartsModal(false)}
+      />
+    </ScrollView>
+  </SafeAreaView>
+</Modal>
 
 
       <Modal

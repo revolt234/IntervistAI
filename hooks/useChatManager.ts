@@ -1,3 +1,4 @@
+//useChatManager
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Tts from 'react-native-tts';
@@ -19,6 +20,7 @@ export interface Chat {
   messages: Message[];
   createdAt: string;
   evaluationScores: { [fenomeno: string]: number };
+  evaluationLog?: { [fenomeno: string]: Array<{ score: number; timestamp: number }> }; // 👈 NEW
 }
 
 export const useChatManager = () => {
@@ -63,30 +65,44 @@ export const useChatManager = () => {
 
   const saveChat = () => {
     if (chat.length === 0) return;
-    const firstUserMsg = chat.find(msg => msg.role === 'user' && !msg.message.includes('INIZIO_INTERVISTA_NASCOSTO'));
+
+    const firstUserMsg = chat.find(
+      msg => msg.role === 'user' && !msg.message.includes('INIZIO_INTERVISTA_NASCOSTO')
+    );
     const title = firstUserMsg
       ? firstUserMsg.message.slice(0, 30) + (firstUserMsg.message.length > 30 ? '...' : '')
       : 'Nuova conversazione';
 
-    const updatedChat: Chat = {
-      id: currentChatId,
-      title,
-      messages: [...chat],
-      createdAt: new Date().toISOString(),
-      evaluationScores: currentEvaluationScores,
-    };
-
     setChatHistory(prev => {
-      const idx = prev.findIndex(c => c.id === currentChatId);
-      if (idx >= 0) {
+      const existingIdx = prev.findIndex(c => c.id === currentChatId);
+      const existing = existingIdx >= 0 ? prev[existingIdx] : undefined;
+
+      const updatedChat: Chat = {
+        id: currentChatId,
+        title,
+        messages: [...chat],
+        // mantieni la createdAt originale se la chat esiste già
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        evaluationScores: currentEvaluationScores,
+        // 👇 preserva SEMPRE il log già esistente
+        evaluationLog: existing?.evaluationLog ?? {},
+      };
+
+      if (existingIdx >= 0) {
         const newHistory = [...prev];
-        newHistory[idx] = updatedChat;
+        // unisci per sicurezza (nel caso in futuro aggiungessi altro in parallelo)
+        newHistory[existingIdx] = {
+          ...existing,
+          ...updatedChat,
+          evaluationLog: existing?.evaluationLog ?? {},
+        };
         return newHistory;
       } else {
         return [updatedChat, ...prev];
       }
     });
   };
+
 
   const startNewChat = async () => {
     Tts.stop();
