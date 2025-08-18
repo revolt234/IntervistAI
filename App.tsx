@@ -65,6 +65,7 @@ export default function App() {
     startInterview,
     saveChat
   } = useChatManager();
+  const [isToolsMenuVisible, setToolsMenuVisible] = useState(false);
 const [showChartsModal, setShowChartsModal] = useState(false);
   const { exporting, exportChatToFile } = useExportManager();
 
@@ -289,11 +290,6 @@ const handleGoHome = () => {
   return (
     <SafeAreaView style={styles.container}>
 
-
-      // In App.tsx nel return()
-
-     // In App.tsx
-
      <ChatHeader
        onToggleHistoryModal={() => setShowHistoryModal(true)}
        onNewChat={handleStartNewChat}
@@ -330,37 +326,22 @@ const handleGoHome = () => {
              problemOptions={problemOptions}
              onEvaluateSingleProblem={handleEvaluateSingleProblem}
            />
-           <ChatInput
-             input={input}
-             onChangeInput={setInput}
-             onSend={sendMessage}
-             onImport={handleImportTranscript} // <-- Commenta questa riga
-             loading={loading}
-             evaluating={evaluating}
-           />
+
+          <ChatInput
+            input={input}
+            onChangeInput={setInput}
+            onSend={sendMessage}
+            // La prop 'onImport' è stata rimossa
+            loading={loading}
+            evaluating={evaluating}
+          />
            <View style={styles.actionButtons}>
-             <View style={[styles.evaluateButton, (loading || evaluating) && styles.disabledInput]}>
+             <View style={styles.toolsButtonContainer}>
                <Button
-                 title="Genera Report"
-                 onPress={handleEvaluateProblems}
+                 title="🔧 Strumenti"
+                 onPress={() => setToolsMenuVisible(true)} // Apre il nuovo menu
                  disabled={loading || evaluating || chat.length === 0}
-                 color="#4CAF50"
-               />
-             </View>
-             <View style={[styles.exportButton, (loading || evaluating || chat.length === 0) && styles.disabledInput]}>
-                 <Button
-                   title="Esporta Grafici"
-                   onPress={() => setShowChartsModal(true)}
-                   disabled={loading || evaluating || chat.length === 0}
-                   color="#2196F3"
-                 />
-               </View>
-             <View style={[styles.exportButton, (loading || evaluating || chat.length === 0) && styles.disabledInput]}>
-               <Button
-                 title={exporting ? "Esportando..." : "Esporta"}
-                 onPress={() => setShowExportModal(true)}
-                 disabled={loading || evaluating || chat.length === 0 || exporting}
-                 color="#FF5722"
+                 color="#673AB7" // Un nuovo colore per il pulsante
                />
              </View>
            </View>
@@ -448,6 +429,71 @@ const handleGoHome = () => {
           </View>
         </View>
       </Modal>
+
+
+      <Modal
+        transparent={true}
+        visible={isToolsMenuVisible}
+        animationType="fade"
+        onRequestClose={() => setToolsMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.toolsModalOverlay}
+          activeOpacity={1}
+          onPressOut={() => setToolsMenuVisible(false)} // Chiude il modal se si clicca fuori
+        >
+          <View style={styles.toolsMenuContainer}>
+
+            <TouchableOpacity
+              style={styles.toolsMenuButton}
+              onPress={() => {
+                setToolsMenuVisible(false);
+                handleEvaluateProblems();
+              }}
+            >
+              <Text style={styles.toolsMenuButtonText}>Genera Report</Text>
+            </TouchableOpacity>
+
+            <View style={styles.toolsMenuDivider} />
+
+            {/* 2. Pulsante Esporta Grafici */}
+            <TouchableOpacity
+              style={styles.toolsMenuButton}
+              onPress={() => {
+                setToolsMenuVisible(false);
+                setShowChartsModal(true);
+              }}
+            >
+              <Text style={styles.toolsMenuButtonText}>Esporta Grafici</Text>
+            </TouchableOpacity>
+
+            <View style={styles.toolsMenuDivider} />
+
+            {/* 3. Pulsante Esporta Chat */}
+            <TouchableOpacity
+              style={styles.toolsMenuButton}
+              onPress={() => {
+                setToolsMenuVisible(false);
+                setShowExportModal(true);
+              }}
+            >
+              <Text style={styles.toolsMenuButtonText}>{exporting ? "Esportando..." : "Esporta Chat"}</Text>
+            </TouchableOpacity>
+            <View style={styles.toolsMenuDivider} />
+
+              <TouchableOpacity
+                style={styles.toolsMenuButton}
+                onPress={() => {
+                  setToolsMenuVisible(false);
+                  handleImportTranscript();
+                }}
+              >
+                <Text style={styles.toolsMenuButtonText}>Importa Trascrizioni</Text>
+              </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -669,4 +715,42 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
+  // Aggiungi questo blocco dentro StyleSheet.create({ ... })
+
+    // Stili per il pulsante Strumenti e il suo menu
+    toolsButtonContainer: {
+      flex: 1,
+      paddingHorizontal: 5,
+    },
+    toolsModalOverlay: {
+      flex: 1,
+      justifyContent: 'center', // <-- Questo centra il menu verticalmente
+      alignItems: 'center',      // <-- Questo centra il menu orizzontalmente
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    toolsMenuContainer: {
+      backgroundColor: 'white',
+      borderRadius: 12,
+      width: '80%', // Il pop-up occuperà l'80% della larghezza dello schermo
+      // Ombra per Android
+      elevation: 5,
+      // Ombra per iOS
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    toolsMenuButton: {
+      padding: 15,
+      alignItems: 'center',
+    },
+    toolsMenuButtonText: {
+      fontSize: 16,
+      color: '#2196F3',
+      fontWeight: '500',
+    },
+    toolsMenuDivider: {
+      height: 1,
+      backgroundColor: '#e0e0e0',
+    },
 });

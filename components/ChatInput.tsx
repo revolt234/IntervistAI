@@ -8,11 +8,11 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+// 1. 'onImport' è stato rimosso da qui
 interface ChatInputProps {
   input: string;
   onChangeInput: (text: string) => void;
   onSend: () => void;
-  onImport: () => void;
   loading: boolean;
   evaluating: boolean;
 }
@@ -21,7 +21,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   input,
   onChangeInput,
   onSend,
-  onImport,
+  // 2. 'onImport' è stato rimosso da qui
   loading,
   evaluating,
 }) => {
@@ -31,7 +31,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   return (
     <View style={[styles.inputContainer, disabled && styles.disabled]}>
       <TextInput
-        key={Platform.OS === 'android' ? 'android-input' : 'default-input'} // 👈 Fix per Android crash
+        key={Platform.OS === 'android' ? 'android-input' : 'default-input'}
         value={input}
         onChangeText={onChangeInput}
         placeholder="Scrivi un messaggio..."
@@ -39,14 +39,6 @@ const ChatInput: React.FC<ChatInputProps> = ({
         multiline
         editable={!disabled}
       />
-
-      <TouchableOpacity
-        onPress={onImport}
-        style={styles.iconButton}
-        disabled={disabled}
-      >
-        <MaterialCommunityIcons name="plus-circle-outline" size={28} color="#007AFF" />
-      </TouchableOpacity>
 
       <TouchableOpacity
         onPress={onSend}
