@@ -143,13 +143,13 @@ useEffect(() => {
     }
     setVoiceEnabled(!voiceEnabled);
   };
-
- const handleStartNewChat = () => {
-   if (voiceEnabled) {
-     Tts.stop();
-   }
-   startNewChat(); // <-- Questo è quello esportato da useChatManager
- };
+const handleStartNewChat = async () => { // Rendila async
+  if (voiceEnabled) {
+    Tts.stop();
+  }
+  // Ora chiama la stessa funzione usata dal pulsante "Inizia Intervista"
+  await handleStartInterview();
+};
 
 
 
@@ -262,7 +262,14 @@ const handleImportTranscript = async () => {
       setAskedQuestions(questionsAsked);
     }
   };
-
+// In App.tsx, all'interno del componente App()
+const handleGoHome = () => {
+  if (voiceEnabled) {
+    Tts.stop();
+  }
+  startNewChat(); // Riutilizziamo la logica di pulizia della chat
+  setIsFirstLoad(true); // Questo è il passaggio chiave per mostrare la home
+};
   const deleteChat = async (chatId: string) => {
     try {
       const updatedHistory = chatHistory.filter(chat => chat.id !== chatId);
@@ -283,12 +290,18 @@ const handleImportTranscript = async () => {
     <SafeAreaView style={styles.container}>
 
 
-      <ChatHeader
-        onToggleHistoryModal={() => setShowHistoryModal(true)}
+      // In App.tsx nel return()
+
+     // In App.tsx
+
+     <ChatHeader
+       onToggleHistoryModal={() => setShowHistoryModal(true)}
        onNewChat={handleStartNewChat}
-        voiceEnabled={voiceEnabled}
-        onToggleVoice={toggleVoice}
-      />
+       onGoHome={handleGoHome}
+       isOnHome={isFirstLoad} // 👈 Aggiungi questa prop
+       voiceEnabled={voiceEnabled}
+       onToggleVoice={toggleVoice}
+     />
 
 
      <View style={styles.chatContainer}>
