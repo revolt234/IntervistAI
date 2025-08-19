@@ -19,16 +19,28 @@ export const useEvaluationManager = ({
   avgTimeResponse,
   avgResponseLength,
   counterInterruption,
+    avgSpeechRate,
+    maxSpeechRate,
   setChatHistory, // <- serve per salvare e poi persistere
 }) => {
   // Helper note dinamiche per fenomeno
   const getHintsForProblem = (problem) => {
     let timeHint = '';
     let logorreaHint = '';
-
+    let speechRateHint = '';
+  if (problem.fenomeno.toLowerCase().includes('discorso sotto pressione')) {
+    if (avgSpeechRate !== undefined && maxSpeechRate !== undefined) {
+      speechRateHint =
+        `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Discorso Sotto Pressione:** ` +
+        `DATI DEL PAZIENTE:` +
+        `Velocità media del parlato = ${avgSpeechRate.toFixed(2)} parole/s; ` +
+        `Picco di velocità = ${maxSpeechRate.toFixed(2)} parole/s. ` +
+        `Tu devi considerare che in media la velcità di conversazione si aggira intorno alle 130-150 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
+    }
+  }
     if (problem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined) {
       timeHint =
-        `**Nota da menzionare sempre nella valutazione di Pensiero Rallentato: ` +
+        `**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Pensiero Rallentato: ` +
         `tempo medio delle risposte del paziente calcolato con metadati = ${avgTimeResponse.toFixed(2)}s. ` +
         `Se > 2 secondi rafforza la presenza della problematica.**\n`;
     }
@@ -36,13 +48,13 @@ export const useEvaluationManager = ({
     if (problem.fenomeno.toLowerCase().includes('logorrea')) {
       if (avgResponseLength !== undefined && counterInterruption !== undefined) {
         logorreaHint =
-          `\n**Nota da menzionare sempre nella valutazione di Logorrea:** ` +
+          `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Logorrea:** ` +
           `Lunghezza media risposte ${avgResponseLength.toFixed(2)} parole; ` +
           `interrompe il medico nel ${(counterInterruption * 100).toFixed(1)}% dei casi. ` +
           `Considera queste metriche nell'assegnazione del punteggio.\n\n`;
       }
     }
-    return { timeHint, logorreaHint };
+   return { timeHint, logorreaHint, speechRateHint }; // Aggiungi speechRateHint
   };
 
   // ------- Valutazione singolo fenomeno -------
@@ -60,6 +72,16 @@ export const useEvaluationManager = ({
         Alert.alert('⚠️ Informazione mancante', 'avgTimeResponse non disponibile.');
       }
     }
+if (selectedProblem.fenomeno.toLowerCase().includes('discorso sotto pressione')) {
+  let msg = '';
+  msg += avgSpeechRate == null
+    ? '⚠️ Velocità media parlato NON disponibile.\n'
+    : `⚡️ Velocità media parlato: ${avgSpeechRate.toFixed(2)} parole/s\n`;
+  msg += maxSpeechRate == null
+    ? '⚠️ Picco velocità parlato NON disponibile.\n'
+    : `🚀 Picco velocità parlato: ${maxSpeechRate.toFixed(2)} parole/s\n`;
+  Alert.alert('📊 Metriche per Discorso Sotto Pressione', msg.trim());
+}
     if (selectedProblem.fenomeno.toLowerCase().includes('logorrea')) {
       let msg = '';
       msg += avgResponseLength == null
@@ -85,14 +107,14 @@ export const useEvaluationManager = ({
           : 'Nessun punteggio precedente disponibile per questo fenomeno.'
       );
 
-      const { timeHint, logorreaHint } = getHintsForProblem(selectedProblem);
+      const { timeHint, logorreaHint, speechRateHint } = getHintsForProblem(selectedProblem);
 
       const prompt = `
 - Problematica: ${selectedProblem.fenomeno}
 - Descrizione: ${selectedProblem.descrizione}
 - Esempio: ${selectedProblem.esempio}
 - Punteggio TLDS: ${selectedProblem.punteggio}
-${timeHint}${logorreaHint}
+${timeHint}${logorreaHint}${speechRateHint}
 ${previousScore >= 0
   ? `\nNOTA: menziona sempre esplicitamente il valore precedente '${previousScore}' (0–4) e se è maggiore/minore dell’attuale.`
   : ''
@@ -167,6 +189,8 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
     avgTimeResponse,
     avgResponseLength,
     counterInterruption,
+    avgSpeechRate, // <-- AGGIUNGI
+    maxSpeechRate, // <-- AGGIUNGI
     setEvaluating,
     setCurrentEvaluationScores,
     setChatHistory,
@@ -205,14 +229,14 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
       const newCurrentScores: { [fenomeno: string]: number } = {};
 
       for (const problem of problemDetails) {
-        const { timeHint, logorreaHint } = getHintsForProblem(problem);
+        const { timeHint, logorreaHint, speechRateHint } = getHintsForProblem(problem);
 
         const prompt = `
 - Problematica: ${problem.fenomeno}
 - Descrizione: ${problem.descrizione}
 - Esempio: ${problem.esempio}
 - Punteggio TLDS: ${problem.punteggio}
-${timeHint}${logorreaHint}
+${timeHint}${logorreaHint}${speechRateHint}
 **Se il tuo ultimo messaggio è una domanda, non considerare questa nella valutazione.**
 **Valuta la presenza della problematica "${problem.fenomeno}" all'interno delle risposte del paziente, usando il seguente modello:**
 - Modello di output: ${problem.modello_di_output}
@@ -276,17 +300,19 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
     } finally {
       setEvaluating(false);
     }
-  }, [
-    chat,
-    avgTimeResponse,
-    avgResponseLength,
-    counterInterruption,
-    chatHistory,
-    currentChatId,
-    setEvaluating,
-    setCurrentEvaluationScores,
-    setChatHistory,
-  ]);
+ }, [
+   chat,
+   chatHistory,
+   currentChatId,
+   avgTimeResponse,
+   avgResponseLength,
+   counterInterruption,
+   avgSpeechRate, // <-- AGGIUNGI
+   maxSpeechRate, // <-- AGGIUNGI
+   setEvaluating,
+   setCurrentEvaluationScores,
+   setChatHistory,
+ ]);
 
   // Estrazione punteggio (accetta "Assegnato" o "assegnato")
   const extractScoreFromText = (text: string): number => {

@@ -13,8 +13,10 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
-  Platform
 } from 'react-native';
+
+import { useUIManager } from './hooks/useUIManager'; // <-- AGGIUNGI
+import ToolsMenuModal from './components/ToolsMenuModal'; // <-- AGGIUNGI
 import ChartsReportExport from './components/ChartsReportExport'; // default import (senza graffe)
 import { useExportManager } from './hooks/useExportManager';
 import { useEvaluationManager } from './hooks/useEvaluationManager';
@@ -45,6 +47,8 @@ interface Chat {
   avgTimeResponse?: number;
   avgResponseLength?: number;
   counterInterruption?: number;
+   avgSpeechRate?: number; // <-- AGGIUNGI
+    maxSpeechRate?: number; // <-- AGGIUNGI
 }
 
 export default function App() {
@@ -65,8 +69,7 @@ export default function App() {
     startInterview,
     saveChat
   } = useChatManager();
-  const [isToolsMenuVisible, setToolsMenuVisible] = useState(false);
-const [showChartsModal, setShowChartsModal] = useState(false);
+
   const { exporting, exportChatToFile } = useExportManager();
 
   // ✅ 1. DICHIARA LO STATO PER LE METRICHE TEMPORANEE
@@ -79,6 +82,8 @@ const [showChartsModal, setShowChartsModal] = useState(false);
     avgTimeResponse: chatObj?.avgTimeResponse,
     avgResponseLength: chatObj?.avgResponseLength,
     counterInterruption: chatObj?.counterInterruption,
+    avgSpeechRate: chatObj?.avgSpeechRate, // <-- AGGIUNGI
+      maxSpeechRate: chatObj?.maxSpeechRate, // <-- AGGIUNGI
   };
 
 
@@ -96,16 +101,17 @@ const [showChartsModal, setShowChartsModal] = useState(false);
    avgTimeResponse: metricsForEvaluation?.avgTimeResponse,
    avgResponseLength: metricsForEvaluation?.avgResponseLength,
    counterInterruption: metricsForEvaluation?.counterInterruption,
-   // 👇 AGGIUNGI QUESTO
-   setChatHistory,
+   avgSpeechRate: metricsForEvaluation?.avgSpeechRate, // <-- AGGIUNGI
+      maxSpeechRate: metricsForEvaluation?.maxSpeechRate, // <-- AGGIUNGI
+      setChatHistory,
  });
 
   // Stati locali NON gestiti dal manager
   const [dropdownVisible, setDropdownVisible] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
+const { uiState, uiActions } = useUIManager();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [isFirstLoad, setIsFirstLoad] = useState(true);
+
+
   const [problemOptions, setProblemOptions] = useState<any[]>([]);
   const chatScrollViewRef = useRef<ScrollView>(null);
 
@@ -144,12 +150,11 @@ useEffect(() => {
     }
     setVoiceEnabled(!voiceEnabled);
   };
-const handleStartNewChat = async () => { // Rendila async
+const handleStartNewChat = async () => {
   if (voiceEnabled) {
     Tts.stop();
   }
-  // Ora chiama la stessa funzione usata dal pulsante "Inizia Intervista"
-  await handleStartInterview();
+  await handleStartInterviewAndChat();
 };
 
 
@@ -157,12 +162,14 @@ const handleStartNewChat = async () => { // Rendila async
 const handleImportTranscript = async () => {
   const result = await JsonFileReader.importTranscriptFromFile();
   if (result) {
-    const {
-      transcript,
-      avgTimeResponse,
-      avgResponseLength,
-      counterInterruption,
-    } = result;
+ const {
+   transcript,
+   avgTimeResponse,
+   avgResponseLength,
+   counterInterruption,
+   avgSpeechRate, // <-- AGGIUNGI
+   maxSpeechRate, // <-- AGGIUNGI
+ } = result;
 
     let mappedMessages = transcript.map(item => ({
       role: item.role === 'medico' ? 'bot' : 'user',
@@ -186,10 +193,6 @@ const handleImportTranscript = async () => {
       }
     }
 
-
-
-    // --- 👇 INIZIO MODIFICHE ---
-
     // 1. Crea un oggetto temporaneo per la chat importata
     const importedChatObject = {
       id: `imported-${Date.now()}`, // ID temporaneo per distinguerla
@@ -207,18 +210,13 @@ const handleImportTranscript = async () => {
     // Non cambiare currentChatId (resta nella chat attuale)
     setCurrentEvaluationScores(prev => ({ ...prev })); // mantieni punteggi esistenti
 
-
-    // 4. Salva le metriche in uno stato separato per passarle alla valutazione
-    //    Questo è il passaggio chiave per renderle disponibili!
-    //    Dovrai aggiungere questo nuovo stato in App.tsx:
-    //    const [tempMetrics, setTempMetrics] = useState(null);
     setTempMetrics({
       avgTimeResponse,
       avgResponseLength,
       counterInterruption,
+       avgSpeechRate, // <-- AGGIUNGI
+        maxSpeechRate, // <-- AGGIUNGI
     });
-
-    // --- 👆 FINE MODIFICHE ---
 
     setIsFirstLoad(false);
     setInitialPromptSent(true);
@@ -232,13 +230,10 @@ const handleImportTranscript = async () => {
   }
 };
 
-
-
- const handleStartInterview = async () => {
-   setIsFirstLoad(false); // rimane fuori dal hook
-   await startInterview(); // chiama la funzione interna del useChatManager
- };
-
+const handleStartInterviewAndChat = async () => {
+  uiActions.setFirstLoad(false);
+  await startInterview();
+};
 
   const loadChat = (chatId: string) => {
     if (voiceEnabled) {
@@ -253,8 +248,10 @@ const handleImportTranscript = async () => {
       }
       setCurrentChatId(chatId);
       setHasAskedForNameAndBirth(selectedChat.messages.some(m => m.role === 'bot' && m.message.includes('nome e data di nascita')));
-      setShowHistoryModal(false);
-      setIsFirstLoad(false);
+     //...dentro loadChat
+     uiActions.closeHistoryModal();
+     uiActions.setFirstLoad(false);
+     setTempMetrics(null); // Aggiungi questo per resettare le metriche quando carichi una chat
       setInitialPromptSent(true);
 
       const questionsAsked = selectedChat.messages
@@ -268,8 +265,8 @@ const handleGoHome = () => {
   if (voiceEnabled) {
     Tts.stop();
   }
-  startNewChat(); // Riutilizziamo la logica di pulizia della chat
-  setIsFirstLoad(true); // Questo è il passaggio chiave per mostrare la home
+  startNewChat();
+  uiActions.setFirstLoad(true);
 };
   const deleteChat = async (chatId: string) => {
     try {
@@ -288,214 +285,128 @@ const handleGoHome = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container}>
 
-     <ChatHeader
-       onToggleHistoryModal={() => setShowHistoryModal(true)}
-       onNewChat={handleStartNewChat}
-       onGoHome={handleGoHome}
-       isOnHome={isFirstLoad} // 👈 Aggiungi questa prop
-       voiceEnabled={voiceEnabled}
-       onToggleVoice={toggleVoice}
-     />
+        <ChatHeader
+          onToggleHistoryModal={uiActions.openHistoryModal}
+          onNewChat={handleStartNewChat}
+          onGoHome={handleGoHome}
+          isOnHome={uiState.isFirstLoad}
+          voiceEnabled={voiceEnabled}
+          onToggleVoice={toggleVoice}
+        />
 
-
-     <View style={styles.chatContainer}>
-       {isFirstLoad && chat.length === 0 ? (
-         <View style={styles.startInterviewContainer}>
-           <TouchableOpacity
-             style={styles.startInterviewButton}
-             onPress={handleStartInterview}
-           >
-             <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
-           </TouchableOpacity>
-
-           <TouchableOpacity
-             style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#FFC107' }]}
-             onPress={handleImportTranscript} // 👈 questa funzione deve essere definita sopra
-           >
-             <Text style={styles.startInterviewButtonText}>Valuta Intervista (JSON)</Text>
-           </TouchableOpacity>
-         </View>
-       ) : (
-         <>
-           <ChatMessages
-             chat={chat}
-             loading={loading}
-             evaluating={evaluating}
-             problemOptions={problemOptions}
-             onEvaluateSingleProblem={handleEvaluateSingleProblem}
-           />
-
-          <ChatInput
-            input={input}
-            onChangeInput={setInput}
-            onSend={sendMessage}
-            // La prop 'onImport' è stata rimossa
-            loading={loading}
-            evaluating={evaluating}
-          />
-           <View style={styles.actionButtons}>
-             <View style={styles.toolsButtonContainer}>
-               <Button
-                 title="🔧 Strumenti"
-                 onPress={() => setToolsMenuVisible(true)} // Apre il nuovo menu
-                 disabled={loading || evaluating || chat.length === 0}
-                 color="#673AB7" // Un nuovo colore per il pulsante
-               />
-             </View>
-           </View>
-         </>
-       )}
-     </View>
-<Modal
-  animationType="slide"
-  transparent={false}
-  visible={showChartsModal}
-  onRequestClose={() => setShowChartsModal(false)}
->
-  <SafeAreaView style={styles.modalContainer}>
-    <View style={styles.modalHeader}>
-      <Text style={styles.modalTitle}>Report Grafici</Text>
-      <TouchableOpacity onPress={() => setShowChartsModal(false)}>
-        <Text style={styles.closeButton}>✕</Text>
-      </TouchableOpacity>
-    </View>
-
-    <ScrollView style={styles.modalContent}>
-      <ChartsReportExport
-        problems={problemOptions}
-        evaluationLog={chatHistory.find(c => c.id === currentChatId)?.evaluationLog}
-        onSaved={() => setShowChartsModal(false)}
-      />
-    </ScrollView>
-  </SafeAreaView>
-</Modal>
-
-
-      <Modal
-        animationType="slide"
-        transparent={false}
-        visible={showHistoryModal}
-        onRequestClose={() => setShowHistoryModal(false)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Cronologia Chat</Text>
-            <TouchableOpacity onPress={() => setShowHistoryModal(false)}>
-              <Text style={styles.closeButton}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            {chatHistory.map((item) => (
-              <View key={item.id} style={styles.historyItemContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.historyItem,
-                    currentChatId === item.id && styles.selectedHistoryItem
-                  ]}
-                  onPress={() => loadChat(item.id)}
-                >
-                  <Text style={styles.historyItemTitle}>{item.title}</Text>
-                  <Text style={styles.historyItemDate}>
-                    {new Date(item.createdAt).toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.deleteHistoryItem}
-                  onPress={() => deleteChat(item.id)}
-                >
-                  <Text style={styles.deleteHistoryItemText}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-  <ExportModal
-    visible={showExportModal}
-    onClose={() => setShowExportModal(false)}
-    onSave={(fileName) => exportChatToFile(chat, fileName)}
-  />
-      <Modal transparent={true} visible={evaluating || exporting}>
-        <View style={styles.loadingModal}>
-          <View style={styles.loadingContent}>
-            <ActivityIndicator size="large" color="#0000ff" />
-            <Text style={styles.loadingText}>
-              {exporting ? "Esportazione in corso..." : "Generazione del report in corso..."}
-            </Text>
-          </View>
-        </View>
-      </Modal>
-
-
-      <Modal
-        transparent={true}
-        visible={isToolsMenuVisible}
-        animationType="fade"
-        onRequestClose={() => setToolsMenuVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.toolsModalOverlay}
-          activeOpacity={1}
-          onPressOut={() => setToolsMenuVisible(false)} // Chiude il modal se si clicca fuori
-        >
-          <View style={styles.toolsMenuContainer}>
-
-            <TouchableOpacity
-              style={styles.toolsMenuButton}
-              onPress={() => {
-                setToolsMenuVisible(false);
-                handleEvaluateProblems();
-              }}
-            >
-              <Text style={styles.toolsMenuButtonText}>Genera Report</Text>
-            </TouchableOpacity>
-
-            <View style={styles.toolsMenuDivider} />
-
-            {/* 2. Pulsante Esporta Grafici */}
-            <TouchableOpacity
-              style={styles.toolsMenuButton}
-              onPress={() => {
-                setToolsMenuVisible(false);
-                setShowChartsModal(true);
-              }}
-            >
-              <Text style={styles.toolsMenuButtonText}>Esporta Grafici</Text>
-            </TouchableOpacity>
-
-            <View style={styles.toolsMenuDivider} />
-
-            {/* 3. Pulsante Esporta Chat */}
-            <TouchableOpacity
-              style={styles.toolsMenuButton}
-              onPress={() => {
-                setToolsMenuVisible(false);
-                setShowExportModal(true);
-              }}
-            >
-              <Text style={styles.toolsMenuButtonText}>{exporting ? "Esportando..." : "Esporta Chat"}</Text>
-            </TouchableOpacity>
-            <View style={styles.toolsMenuDivider} />
+        <View style={styles.chatContainer}>
+          {uiState.isFirstLoad && chat.length === 0 ? (
+            <View style={styles.startInterviewContainer}>
+              <TouchableOpacity
+                style={styles.startInterviewButton}
+                onPress={handleStartInterviewAndChat}
+              >
+                <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.toolsMenuButton}
-                onPress={() => {
-                  setToolsMenuVisible(false);
-                  handleImportTranscript();
-                }}
+                style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#FFC107' }]}
+                onPress={handleImportTranscript}
               >
-                <Text style={styles.toolsMenuButtonText}>Importa Trascrizioni</Text>
+                <Text style={styles.startInterviewButtonText}>Valuta Intervista (JSON)</Text>
               </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+            </View>
+          ) : (
+            <>
+              <ChatMessages
+                chat={chat}
+                loading={loading}
+                evaluating={evaluating}
+                problemOptions={problemOptions}
+                onEvaluateSingleProblem={handleEvaluateSingleProblem}
+              />
 
-    </SafeAreaView>
-  );
+              <ChatInput
+                input={input}
+                onChangeInput={setInput}
+                onSend={sendMessage}
+                loading={loading}
+                evaluating={evaluating}
+              />
+              <View style={styles.actionButtons}>
+                <View style={styles.toolsButtonContainer}>
+                  <Button
+                    title="🔧 Strumenti"
+                    onPress={uiActions.openToolsMenu}
+                    disabled={loading || evaluating || chat.length === 0}
+                    color="#673AB7"
+                  />
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+
+        <ToolsMenuModal
+          visible={uiState.isToolsMenuVisible}
+          onClose={uiActions.closeToolsMenu}
+          onGenerateReport={handleEvaluateProblems}
+          onExportCharts={uiActions.openChartsModal}
+          onExportChat={uiActions.openExportModal}
+          onImportTranscript={handleImportTranscript}
+          isExporting={exporting}
+        />
+
+        <HistoryModal
+          visible={uiState.showHistoryModal}
+          onClose={uiActions.closeHistoryModal}
+          chatHistory={chatHistory}
+          currentChatId={currentChatId}
+          onLoadChat={loadChat}
+          onDeleteChat={deleteChat}
+        />
+
+        <ExportModal
+          visible={uiState.showExportModal}
+          onClose={uiActions.closeExportModal}
+          onSave={(fileName) => exportChatToFile(chat, fileName)}
+        />
+
+        {/* Modale per i grafici */}
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={uiState.showChartsModal}
+          onRequestClose={uiActions.closeChartsModal}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Report Grafici</Text>
+              <TouchableOpacity onPress={uiActions.closeChartsModal}>
+                <Text style={styles.closeButton}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalContent}>
+              <ChartsReportExport
+                problems={problemOptions}
+                evaluationLog={chatHistory.find(c => c.id === currentChatId)?.evaluationLog}
+                onSaved={uiActions.closeChartsModal}
+              />
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+
+        {/* Modale di caricamento */}
+        <Modal transparent={true} visible={evaluating || exporting}>
+          <View style={styles.loadingModal}>
+            <View style={styles.loadingContent}>
+              <ActivityIndicator size="large" color="#0000ff" />
+              <Text style={styles.loadingText}>
+                {exporting ? "Esportazione in corso..." : "Generazione del report in corso..."}
+              </Text>
+            </View>
+          </View>
+        </Modal>
+
+      </SafeAreaView>
+    );
 }
 
 const styles = StyleSheet.create({
@@ -715,42 +626,4 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  // Aggiungi questo blocco dentro StyleSheet.create({ ... })
-
-    // Stili per il pulsante Strumenti e il suo menu
-    toolsButtonContainer: {
-      flex: 1,
-      paddingHorizontal: 5,
-    },
-    toolsModalOverlay: {
-      flex: 1,
-      justifyContent: 'center', // <-- Questo centra il menu verticalmente
-      alignItems: 'center',      // <-- Questo centra il menu orizzontalmente
-      backgroundColor: 'rgba(0,0,0,0.4)',
-    },
-    toolsMenuContainer: {
-      backgroundColor: 'white',
-      borderRadius: 12,
-      width: '80%', // Il pop-up occuperà l'80% della larghezza dello schermo
-      // Ombra per Android
-      elevation: 5,
-      // Ombra per iOS
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-    },
-    toolsMenuButton: {
-      padding: 15,
-      alignItems: 'center',
-    },
-    toolsMenuButtonText: {
-      fontSize: 16,
-      color: '#2196F3',
-      fontWeight: '500',
-    },
-    toolsMenuDivider: {
-      height: 1,
-      backgroundColor: '#e0e0e0',
-    },
 });
