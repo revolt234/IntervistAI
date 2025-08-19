@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { Alert, PermissionsAndroid, Platform } from 'react-native';
 import RNFS from 'react-native-fs';
 
+// 1. Aggiorniamo l'interfaccia per includere i timestamp
 interface Message {
   role: 'user' | 'bot';
   message: string;
+  start: number;
+  end: number;
 }
 
 export const useExportManager = () => {
@@ -12,30 +15,16 @@ export const useExportManager = () => {
 
   const requestStoragePermission = async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
-
+    // La logica per i permessi rimane invariata
     try {
       if (Platform.Version >= 33) return true;
 
       const write = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        {
-          title: 'Permesso di scrittura',
-          message: 'L\'app ha bisogno del permesso per salvare i file',
-          buttonPositive: 'Accetta',
-          buttonNegative: 'Rifiuta',
-        }
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
       );
-
       const read = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-        {
-          title: 'Permesso di lettura',
-          message: 'L\'app ha bisogno del permesso per accedere ai file',
-          buttonPositive: 'Accetta',
-          buttonNegative: 'Rifiuta',
-        }
+        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE
       );
-
       return write === PermissionsAndroid.RESULTS.GRANTED &&
              read === PermissionsAndroid.RESULTS.GRANTED;
     } catch (err) {
@@ -44,24 +33,14 @@ export const useExportManager = () => {
     }
   };
 
-  // ✅ Funzione per andare a capo ogni 6 parole
-  const splitTextIntoLines = (text: string, wordsPerLine: number = 6): string => {
-    const words = text.split(/\s+/);
-    const lines: string[] = [];
-
-    for (let i = 0; i < words.length; i += wordsPerLine) {
-      lines.push(words.slice(i, i + wordsPerLine).join(' '));
-    }
-
-    return lines.join('\n');
-  };
-
-  const exportChatToFile = async (chat: Message[], fileName: string) => {
+  // 2. La funzione ora si chiama exportChatToJson e gestisce la nuova logica
+  const exportChatToJson = async (chat: Message[], fileName: string) => {
     setExporting(true);
 
     try {
-      if (!fileName.endsWith('.txt')) {
-        fileName += '.txt';
+      // Assicura che il file finisca con .json
+      if (!fileName.endsWith('.json')) {
+        fileName += '.json';
       }
 
       const hasPermission = await requestStoragePermission();
@@ -70,26 +49,41 @@ export const useExportManager = () => {
         return;
       }
 
-      let content = 'Conversazione Medico-Paziente\n\n';
-      content += `Data: ${new Date().toLocaleDateString()}\n\n`;
+      // 3. Mappiamo la chat nel formato di trascrizione desiderato
+      const transcription = chat.map(msg => {
+        // Ignora i messaggi "nascosti" usati internamente
+        if (msg.message === 'INIZIO_INTERVISTA_NASCOSTO') {
+          return null;
+        }
 
-      chat.forEach(msg => {
-        const role = msg.role === 'user' ? 'PAZIENTE' : 'MEDICO';
-        const formattedMessage = splitTextIntoLines(msg.message, 6); // 👈 formato ogni 6 parole
-        content += `${role}:\n${formattedMessage}\n\n`;
-      });
+        return {
+          speaker: msg.role === 'bot' ? 'SPEAKER_00' : 'SPEAKER_01',
+          role: msg.role === 'bot' ? 'medico' : 'paziente',
+          start: msg.start,
+          end: msg.end,
+          text: msg.message,
+        };
+      }).filter(Boolean); // Rimuove eventuali elementi nulli
+
+      // 4. Creiamo l'oggetto finale con la chiave "transcription"
+      const contentObject = {
+        transcription: transcription,
+      };
+
+      // 5. Convertiamo l'oggetto in una stringa JSON ben formattata (pretty-print)
+      const jsonContent = JSON.stringify(contentObject, null, 2);
 
       const path = `${RNFS.DownloadDirectoryPath}/${fileName}`;
-      await RNFS.writeFile(path, content, 'utf8');
+      await RNFS.writeFile(path, jsonContent, 'utf8');
 
       if (Platform.OS === 'android') {
         await RNFS.scanFile(path);
       }
 
-      Alert.alert('File salvato con successo', `Salvato come: ${fileName}`);
+      Alert.alert('File JSON salvato', `Salvato come: ${fileName}`);
     } catch (err) {
-      console.error('Errore esportazione:', err);
-      Alert.alert('Errore', 'Impossibile salvare il file.');
+      console.error('Errore esportazione JSON:', err);
+      Alert.alert('Errore', 'Impossibile salvare il file JSON.');
     } finally {
       setExporting(false);
     }
@@ -97,6 +91,6 @@ export const useExportManager = () => {
 
   return {
     exporting,
-    exportChatToFile,
+    exportChatToFile: exportChatToJson, // Esportiamo la nuova funzione con il vecchio nome per compatibilità
   };
 };

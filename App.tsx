@@ -25,7 +25,7 @@ import ExportModal from './components/ExportModal';
 import ChatInput from './components/ChatInput';
 import ChatMessages from './components/ChatMessages';
 import ChatHeader from './components/ChatHeader';
-import { Picker } from '@react-native-picker/picker';
+
 import { API_KEY } from '@env';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,7 +37,12 @@ import { useChatManager } from './hooks/useChatManager'; // 👈 nuovo import
 interface Chat {
   id: string;
   title: string;
-  messages: { role: 'user' | 'bot'; message: string }[];
+   messages: {
+     role: 'user' | 'bot';
+     message: string;
+     start: number;
+     end: number;
+   }[];
   createdAt: string;
   evaluationScores: { [fenomeno: string]: number };
   // 👇 nuovo
@@ -107,7 +112,7 @@ export default function App() {
  });
 
   // Stati locali NON gestiti dal manager
-  const [dropdownVisible, setDropdownVisible] = useState(false);
+
 const { uiState, uiActions } = useUIManager();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
 
@@ -162,74 +167,47 @@ const handleStartNewChat = async () => {
 const handleImportTranscript = async () => {
   const result = await JsonFileReader.importTranscriptFromFile();
   if (result) {
- const {
-   transcript,
-   avgTimeResponse,
-   avgResponseLength,
-   counterInterruption,
-   avgSpeechRate, // <-- AGGIUNGI
-   maxSpeechRate, // <-- AGGIUNGI
- } = result;
+    const { transcript, ...metrics } = result;
 
+    // Mappiamo i messaggi includendo i timestamp dal file
     let mappedMessages = transcript.map(item => ({
       role: item.role === 'medico' ? 'bot' : 'user',
       message: item.text,
+      start: item.start,
+      end: item.end,
     }));
 
-    // ✅ Se il primo messaggio non è 'user', duplica il primo user e mettilo all'inizio
-    if (mappedMessages.length > 0 && mappedMessages[0].role !== 'user') {
+    // Aggiungiamo un messaggio fittizio con timestamp a zero se necessario
+    if (chat.length === 0 && mappedMessages.length > 0 && mappedMessages[0].role !== 'user') {
       const firstUserMsg = mappedMessages.find(m => m.role === 'user');
-      if (firstUserMsg) {
-        mappedMessages.unshift({
-          role: 'user',
-          message: 'Chat di '+firstUserMsg.message,
-        });
-      } else {
-        // fallback minimo
-        mappedMessages.unshift({
-          role: 'user',
-          message: '[Inizio conversazione con messaggio utente mancante]',
-        });
-      }
+      const messageText = firstUserMsg ? `Chat di ${firstUserMsg.message}` : '[Inizio conversazione importata]';
+      mappedMessages.unshift({
+        role: 'user',
+        message: messageText,
+        start: 0,
+        end: 0
+      });
     }
 
-    // 1. Crea un oggetto temporaneo per la chat importata
-    const importedChatObject = {
-      id: `imported-${Date.now()}`, // ID temporaneo per distinguerla
-      messages: mappedMessages,
-      // 2. Associa le metriche direttamente a questo oggetto temporaneo
-      avgTimeResponse: avgTimeResponse,
-      avgResponseLength: avgResponseLength,
-      counterInterruption: counterInterruption,
-      evaluationScores: {},
-    };
+    // Aggiungiamo i messaggi importati in coda a quelli esistenti
+    setChat(prev => [...prev, ...mappedMessages]);
 
-    // 3. Aggiunge i messaggi importati in fondo alla chat attuale
-    setChat(prev => [...prev, ...importedChatObject.messages]);
-
-    // Non cambiare currentChatId (resta nella chat attuale)
-    setCurrentEvaluationScores(prev => ({ ...prev })); // mantieni punteggi esistenti
-
-    setTempMetrics({
-      avgTimeResponse,
-      avgResponseLength,
-      counterInterruption,
-       avgSpeechRate, // <-- AGGIUNGI
-        maxSpeechRate, // <-- AGGIUNGI
-    });
-
-    setIsFirstLoad(false);
+    setTempMetrics(metrics);
+    uiActions.setFirstLoad(false);
     setInitialPromptSent(true);
-    setAskedQuestions([]);
-    setHasAskedForNameAndBirth(true);
+    const importedQuestions = mappedMessages
+      .filter(m => m.role === 'bot' && m.message.includes('?'))
+      .map(m => m.message);
+    setAskedQuestions(prev => [...prev, ...importedQuestions]);
 
     Alert.alert(
       'Importazione Riuscita',
-      `Importate ${transcript.length} battute.\nTempo medio di risposta: ${avgTimeResponse.toFixed(2)}s\nLunghezza media: ${avgResponseLength.toFixed(2)} parole\nInterruzioni: ${(counterInterruption * 100).toFixed(1)}%`
+      `Aggiunte ${transcript.length} battute alla conversazione.\n` +
+      `Tempo medio risposta: ${metrics.avgTimeResponse.toFixed(2)}s\n` +
+      `Velocità media: ${metrics.avgSpeechRate.toFixed(2)} parole/s`
     );
   }
 };
-
 const handleStartInterviewAndChat = async () => {
   uiActions.setFirstLoad(false);
   await startInterview();

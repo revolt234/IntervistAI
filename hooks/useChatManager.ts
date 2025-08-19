@@ -9,9 +9,12 @@ import JsonFileReader from '../android/app/src/services/JsonFileReader';
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+// 1. INTERFACCIA AGGIORNATA CON START/END
 export interface Message {
   role: 'user' | 'bot';
   message: string;
+  start: number; // Timestamp di inizio in secondi
+  end: number;   // Timestamp di fine in secondi
 }
 
 export interface Chat {
@@ -20,7 +23,7 @@ export interface Chat {
   messages: Message[];
   createdAt: string;
   evaluationScores: { [fenomeno: string]: number };
-  evaluationLog?: { [fenomeno: string]: Array<{ score: number; timestamp: number }> }; // 👈 NEW
+  evaluationLog?: { [fenomeno: string]: Array<{ score: number; timestamp: number }> };
 }
 
 export const useChatManager = () => {
@@ -81,21 +84,14 @@ export const useChatManager = () => {
         id: currentChatId,
         title,
         messages: [...chat],
-        // mantieni la createdAt originale se la chat esiste già
         createdAt: existing?.createdAt ?? new Date().toISOString(),
         evaluationScores: currentEvaluationScores,
-        // 👇 preserva SEMPRE il log già esistente
         evaluationLog: existing?.evaluationLog ?? {},
       };
 
       if (existingIdx >= 0) {
         const newHistory = [...prev];
-        // unisci per sicurezza (nel caso in futuro aggiungessi altro in parallelo)
-        newHistory[existingIdx] = {
-          ...existing,
-          ...updatedChat,
-          evaluationLog: existing?.evaluationLog ?? {},
-        };
+        newHistory[existingIdx] = { ...existing, ...updatedChat };
         return newHistory;
       } else {
         return [updatedChat, ...prev];
@@ -114,11 +110,11 @@ export const useChatManager = () => {
     setCurrentChatId(Date.now().toString());
     setInitialPromptSent(false);
     setCurrentEvaluationScores({});
-    setAskedQuestions([]); // ✅ Pulisce le domande fatte
+    setAskedQuestions([]);
 
     try {
-      const newQuestions = await JsonFileReader.getRandomMedicalQuestions(); // ✅ Ripesca nuovo file
-      setQuestions(newQuestions); // ✅ Sovrascrive il vecchio array
+      const newQuestions = await JsonFileReader.getRandomMedicalQuestions();
+      setQuestions(newQuestions);
     } catch (error) {
       console.error('Errore durante il caricamento delle nuove domande:', error);
     }
@@ -128,7 +124,15 @@ export const useChatManager = () => {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = { role: 'user', message: input };
+    // 2. CREAZIONE MESSAGGIO UTENTE CON TIMESTAMP
+    const userStartTime = Date.now() / 1000;
+    const userMessage: Message = {
+      role: 'user',
+      message: input,
+      start: userStartTime,
+      end: Date.now() / 1000, // La fine è quasi immediata
+    };
+
     setChat(prev => {
       if (!initialPromptSent && prev[0]?.message === 'INIZIO_INTERVISTA_NASCOSTO') {
         return [...prev.slice(1), userMessage];
@@ -137,6 +141,8 @@ export const useChatManager = () => {
     });
 
     setLoading(true);
+    const currentInput = input;
+    setInput('');
 
     try {
       const chatHistoryForAI = chat
@@ -146,10 +152,9 @@ export const useChatManager = () => {
           parts: [{ text: msg.message }],
         }));
 
-
       chatHistoryForAI.push({
         role: 'user',
-        parts: [{ text: input }],
+        parts: [{ text: currentInput }],
       });
 
       let prompt = '';
@@ -196,80 +201,91 @@ export const useChatManager = () => {
                                     - Se tutte le domande disponibili sono state fatte ringrazia il Paziente per aver risposto e concludi l'intervista (ESEMPIO:"Grazie per aver risposto, le domande sono finite")`;
                                }
 
-      const chatSession = model.startChat({
-        history: chatHistoryForAI,
-      });
+      const chatSession = model.startChat({ history: chatHistoryForAI });
 
-      const result = await chatSession.sendMessage(prompt);
-      const response = await result.response;
-      const text = response.text();
+            // 3. REGISTRAZIONE TIMESTAMP PER IL BOT
+            const botStartTime = Date.now() / 1000;
+            const result = await chatSession.sendMessage(prompt);
+            const response = await result.response;
+            const text = response.text();
+            const botEndTime = Date.now() / 1000;
 
-      setChat(prev => [...prev, { role: 'bot', message: text }]);
-      setInitialPromptSent(true);
-    } catch (err) {
-      console.error('Errore durante la richiesta a Gemini:', err);
-      setChat(prev => [...prev, { role: 'bot', message: 'Errore durante la richiesta.' }]);
-    } finally {
-      setLoading(false);
-      setInput('');
-    }
-  };
+            const botMessage: Message = {
+              role: 'bot',
+              message: text,
+              start: botStartTime,
+              end: botEndTime,
+            };
 
-  const startInterview = async () => {
-    setLoading(true);
-    setHasAskedForNameAndBirth(true);
+            setChat(prev => [...prev, botMessage]);
+            setInitialPromptSent(true);
 
-    try {
-      const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
-      const hiddenMessage: Message = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO' };
-      setChat([hiddenMessage]);
+          } catch (err) {
+            console.error('Errore durante la richiesta a Gemini:', err);
+            const errorStartTime = Date.now() / 1000;
+            setChat(prev => [...prev, {
+              role: 'bot',
+              message: 'Errore durante la richiesta.',
+              start: errorStartTime,
+              end: Date.now() / 1000
+            }]);
+          } finally {
+            setLoading(false);
+          }
+        };
 
-      const chatSession = model.startChat({
-        history: [{
-          role: 'user',
-          parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }],
-        }],
-      });
+        const startInterview = async () => {
+          setLoading(true);
+          setHasAskedForNameAndBirth(true);
 
-      const result = await chatSession.sendMessage(prompt);
-      const response = await result.response;
-      const text = response.text();
+          try {
+            const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
 
-      setChat(prev => [...prev, { role: 'bot', message: text }]);
-      setInitialPromptSent(true);
-    } catch (err) {
-      console.error('Errore durante la richiesta:', err);
-      setChat([{ role: 'bot', message: 'Errore durante la richiesta.' }]);
-    } finally {
-      setLoading(false);
-    }
-  };
+            // Messaggio nascosto con timestamp a zero
+            const hiddenMessage: Message = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO', start: 0, end: 0 };
+            setChat([hiddenMessage]);
 
-  return {
-    chat,
-    setChat,
-    input,
-    setInput,
-    questions,
-    loading,
-    setLoading,
-    evaluating,
-    setEvaluating,
-    hasAskedForNameAndBirth,
-    setHasAskedForNameAndBirth,
-    chatHistory,
-    setChatHistory,
-    currentChatId,
-    setCurrentChatId,
-    currentEvaluationScores,
-    setCurrentEvaluationScores,
-    askedQuestions,
-    setAskedQuestions,
-    initialPromptSent,
-    setInitialPromptSent,
-    sendMessage,
-    startNewChat,
-    startInterview,
-    saveChat,
-  };
-};
+            const chatSession = model.startChat({
+              history: [{ role: 'user', parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }] }],
+            });
+
+            // 4. REGISTRAZIONE TIMESTAMP PER IL PRIMO MESSAGGIO DEL BOT
+            const botStartTime = Date.now() / 1000;
+            const result = await chatSession.sendMessage(prompt);
+            const response = await result.response;
+            const text = response.text();
+            const botEndTime = Date.now() / 1000;
+
+            const botMessage: Message = {
+              role: 'bot',
+              message: text,
+              start: botStartTime,
+              end: botEndTime,
+            };
+
+            setChat(prev => [...prev, botMessage]);
+            setInitialPromptSent(true);
+
+          } catch (err) {
+            console.error('Errore durante la richiesta:', err);
+            const errorStartTime = Date.now() / 1000;
+            setChat([{
+              role: 'bot',
+              message: 'Errore durante la richiesta.',
+              start: errorStartTime,
+              end: Date.now() / 1000
+            }]);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        return {
+          chat, setChat, input, setInput, questions, loading, setLoading,
+          evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
+          chatHistory, setChatHistory, currentChatId, setCurrentChatId,
+          currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
+          initialPromptSent, setInitialPromptSent, sendMessage, startNewChat,
+          startInterview, saveChat,
+        };
+      };
