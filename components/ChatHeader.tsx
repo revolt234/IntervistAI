@@ -1,5 +1,3 @@
-// ChatHeader.tsx
-
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
@@ -7,18 +5,20 @@ interface ChatHeaderProps {
   onToggleHistoryModal: () => void;
   onNewChat: () => void;
   onGoHome: () => void;
-  isOnHome: boolean; // 👈 1. Aggiungi la nuova prop qui
+  isOnHome: boolean;
   voiceEnabled: boolean;
   onToggleVoice: () => void;
+  isLiveMode: boolean; // Assicurati che questa prop sia passata da App.tsx
 }
 
 const ChatHeader: React.FC<ChatHeaderProps> = ({
   onToggleHistoryModal,
   onNewChat,
   onGoHome,
-  isOnHome, // 👈 2. Ricevi la prop
+  isOnHome,
   voiceEnabled,
   onToggleVoice,
+  isLiveMode,
 }) => {
   return (
     <View style={styles.header}>
@@ -26,24 +26,35 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
       <TouchableOpacity onPress={onToggleHistoryModal} style={styles.historyButton}>
         <Text style={styles.historyButtonText}>☰</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={onGoHome} style={styles.homeButton}>
-        <Text style={styles.homeButtonText}>🏠 Home</Text>
-      </TouchableOpacity>
 
-         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {!isOnHome && (
-                <TouchableOpacity onPress={onNewChat} style={styles.newChatButton}>
-                  <Text style={styles.newChatButtonText}>+ Nuova Chat</Text>
-                </TouchableOpacity>
-              )}
-
-        {/* Pulsante Voce */}
-        <TouchableOpacity
-          onPress={onToggleVoice}
-          style={[styles.voiceButton, voiceEnabled && styles.voiceButtonActive]}
-        >
-          <Text style={styles.voiceButtonText}>{voiceEnabled ? '🔊' : '🔇'}</Text>
+      {/* Pulsante Home (visibile solo se non in home) */}
+      {!isOnHome ? (
+        <TouchableOpacity onPress={onGoHome} style={styles.homeButton}>
+          <Text style={styles.homeButtonText}>🏠 Home</Text>
         </TouchableOpacity>
+      ) : (
+        // Segnaposto invisibile per mantenere l'allineamento
+        <View style={styles.homeButton} />
+      )}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {/* --- QUESTA È LA MODIFICA CHIAVE --- */}
+        {/* Mostra "Nuova Chat" solo se NON sei in home */}
+        {!isOnHome && (
+          <TouchableOpacity onPress={onNewChat} style={styles.newChatButton}>
+            <Text style={styles.newChatButtonText}>+ Nuova Chat</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Pulsante Voce (visibile solo in chat e non in modalità live) */}
+        {!isOnHome && !isLiveMode && (
+          <TouchableOpacity
+            onPress={onToggleVoice}
+            style={[styles.voiceButton, voiceEnabled && styles.voiceButtonActive]}
+          >
+            <Text style={styles.voiceButtonText}>{voiceEnabled ? '🔊' : '🔇'}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -64,21 +75,21 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   historyButtonText: {
-    fontSize: 24, // Aumentato per migliore visibilità
+    fontSize: 24,
+    color: '#000',
   },
-  // 👇 3. AGGIUNGI QUESTI NUOVI STILI PER IL PULSANTE HOME 👇
   homeButton: {
     padding: 10,
+    minWidth: 90,
   },
   homeButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#000',
   },
-  // 👆 FINE STILI AGGIUNTI 👆
   newChatButton: {
     padding: 10,
-    marginRight: 10, // Aggiunto per distanziare dal pulsante voce
+    marginRight: 10,
   },
   newChatButtonText: {
     fontSize: 16,
@@ -95,6 +106,7 @@ const styles = StyleSheet.create({
   },
   voiceButtonText: {
     fontSize: 16,
+    color: '#000',
   },
 });
 

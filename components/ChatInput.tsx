@@ -1,3 +1,4 @@
+//ChatInput.tsx
 import React from 'react';
 import {
   View,
@@ -68,17 +69,18 @@ const styles = StyleSheet.create({
   disabled: {
     backgroundColor: '#e0e0e0',
   },
-  input: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderRadius: 20,
-    borderColor: '#ccc',
-    backgroundColor: '#fff',
-    marginRight: 10,
-    maxHeight: 120,
-  },
+    input: {
+      flex: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderRadius: 20,
+      borderColor: '#ccc',
+      backgroundColor: '#fff',
+      marginRight: 10,
+      maxHeight: 120,
+      color: '#000', // <-- AGGIUNGI QUESTA RIGA
+    },
   iconButton: {
     padding: 5,
   },

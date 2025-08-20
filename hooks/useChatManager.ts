@@ -1,4 +1,3 @@
-//useChatManager
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Tts from 'react-native-tts';
@@ -9,12 +8,11 @@ import JsonFileReader from '../android/app/src/services/JsonFileReader';
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-// 1. INTERFACCIA AGGIORNATA CON START/END
 export interface Message {
   role: 'user' | 'bot';
   message: string;
-  start: number; // Timestamp di inizio in secondi
-  end: number;   // Timestamp di fine in secondi
+  start: number;
+  end: number;
 }
 
 export interface Chat {
@@ -99,7 +97,6 @@ export const useChatManager = () => {
     });
   };
 
-
   const startNewChat = async () => {
     Tts.stop();
     if (chat.length > 0) saveChat();
@@ -120,41 +117,34 @@ export const useChatManager = () => {
     }
   };
 
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim()) return;
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-
-    // 2. CREAZIONE MESSAGGIO UTENTE CON TIMESTAMP
     const userStartTime = Date.now() / 1000;
     const userMessage: Message = {
       role: 'user',
-      message: input,
+      message: messageText,
       start: userStartTime,
-      end: Date.now() / 1000, // La fine è quasi immediata
+      end: Date.now() / 1000,
     };
 
     setChat(prev => {
-      if (!initialPromptSent && prev[0]?.message === 'INIZIO_INTERVISTA_NASCOSTO') {
-        return [...prev.slice(1), userMessage];
-      }
-      return [...prev, userMessage];
+        if (!initialPromptSent && prev.length > 0 && prev[0]?.message === 'INIZIO_INTERVISTA_NASCOSTO') {
+            return [...prev.slice(1), userMessage];
+        }
+        return [...prev, userMessage];
     });
-
+    
     setLoading(true);
-    const currentInput = input;
-    setInput('');
 
     try {
-      const chatHistoryForAI = chat
-        .filter(msg => msg && (msg.role === 'user' || msg.role === 'bot') && typeof msg.message === 'string')
-        .map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.message }],
-        }));
-
+      const chatHistoryForAI = chat.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.message }],
+      }));
       chatHistoryForAI.push({
         role: 'user',
-        parts: [{ text: currentInput }],
+        parts: [{ text: messageText }],
       });
 
       let prompt = '';
@@ -162,7 +152,7 @@ export const useChatManager = () => {
         prompt = 'Chiedimi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
         setHasAskedForNameAndBirth(true);
       } else {
-        prompt = `RISPOSTA PAZIENTE: ${input}
+        prompt = `RISPOSTA PAZIENTE: ${messageText}
                                  ### TU DEVI SEGUIRE QUESTE REGOLE:
                                  Seguono 2 punti (punto 1 e punto 2), devi seguire sempre attentamente queste regole, senza mai tralasciare nulla al caso, tenendo in considerazione che devi dare priorità fondamentale al punto 1, e solo se non si ricade nelle sue casistiche passare al punto 2 (non includere messaggi aggiuntivi come "il paziente..."):
                                  punto 1. **Fase di controllo prima di considerare il punto 2:**
@@ -199,93 +189,99 @@ export const useChatManager = () => {
                                     - Se necessario, **riformula la domanda** per renderla più chiara o adatta al contesto, per esempio non puoi dire un proverbio senza prima chiedergli di dirti il significato del proverbio.
                                     - Dalle domande disponibili per la scelta devi escludere quelle presenti in questo elenco:\n [${askedQuestions.join(',\n\n')}].
                                     - Se tutte le domande disponibili sono state fatte ringrazia il Paziente per aver risposto e concludi l'intervista (ESEMPIO:"Grazie per aver risposto, le domande sono finite")`;
-                               }
+      }
 
       const chatSession = model.startChat({ history: chatHistoryForAI });
 
-            // 3. REGISTRAZIONE TIMESTAMP PER IL BOT
-            const botStartTime = Date.now() / 1000;
-            const result = await chatSession.sendMessage(prompt);
-            const response = await result.response;
-            const text = response.text();
-            const botEndTime = Date.now() / 1000;
+      const botStartTime = Date.now() / 1000;
+      const result = await chatSession.sendMessage(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const botEndTime = Date.now() / 1000;
 
-            const botMessage: Message = {
-              role: 'bot',
-              message: text,
-              start: botStartTime,
-              end: botEndTime,
-            };
-
-            setChat(prev => [...prev, botMessage]);
-            setInitialPromptSent(true);
-
-          } catch (err) {
-            console.error('Errore durante la richiesta a Gemini:', err);
-            const errorStartTime = Date.now() / 1000;
-            setChat(prev => [...prev, {
-              role: 'bot',
-              message: 'Errore durante la richiesta.',
-              start: errorStartTime,
-              end: Date.now() / 1000
-            }]);
-          } finally {
-            setLoading(false);
-          }
-        };
-
-        const startInterview = async () => {
-          setLoading(true);
-          setHasAskedForNameAndBirth(true);
-
-          try {
-            const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
-
-            // Messaggio nascosto con timestamp a zero
-            const hiddenMessage: Message = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO', start: 0, end: 0 };
-            setChat([hiddenMessage]);
-
-            const chatSession = model.startChat({
-              history: [{ role: 'user', parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }] }],
-            });
-
-            // 4. REGISTRAZIONE TIMESTAMP PER IL PRIMO MESSAGGIO DEL BOT
-            const botStartTime = Date.now() / 1000;
-            const result = await chatSession.sendMessage(prompt);
-            const response = await result.response;
-            const text = response.text();
-            const botEndTime = Date.now() / 1000;
-
-            const botMessage: Message = {
-              role: 'bot',
-              message: text,
-              start: botStartTime,
-              end: botEndTime,
-            };
-
-            setChat(prev => [...prev, botMessage]);
-            setInitialPromptSent(true);
-
-          } catch (err) {
-            console.error('Errore durante la richiesta:', err);
-            const errorStartTime = Date.now() / 1000;
-            setChat([{
-              role: 'bot',
-              message: 'Errore durante la richiesta.',
-              start: errorStartTime,
-              end: Date.now() / 1000
-            }]);
-          } finally {
-            setLoading(false);
-          }
-        };
-
-        return {
-          chat, setChat, input, setInput, questions, loading, setLoading,
-          evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
-          chatHistory, setChatHistory, currentChatId, setCurrentChatId,
-          currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
-          initialPromptSent, setInitialPromptSent, sendMessage, startNewChat,
-          startInterview, saveChat,
-        };
+      const botMessage: Message = {
+        role: 'bot',
+        message: text,
+        start: botStartTime,
+        end: botEndTime,
       };
+
+      setChat(prev => [...prev, botMessage]);
+      setInitialPromptSent(true);
+
+    } catch (err) {
+      console.error('Errore durante la richiesta a Gemini:', err);
+      const errorStartTime = Date.now() / 1000;
+      setChat(prev => [...prev, {
+        role: 'bot',
+        message: 'Errore durante la richiesta.',
+        start: errorStartTime,
+        end: Date.now() / 1000
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendFromInput = () => {
+    if (input.trim()) {
+      sendMessage(input);
+      setInput('');
+    }
+  };
+
+  const startInterview = async () => {
+    setLoading(true);
+    setHasAskedForNameAndBirth(true);
+
+    try {
+      const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
+      const hiddenMessage: Message = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO', start: 0, end: 0 };
+      setChat([hiddenMessage]);
+      const chatSession = model.startChat({
+        history: [{ role: 'user', parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }] }],
+      });
+
+      const botStartTime = Date.now() / 1000;
+      const result = await chatSession.sendMessage(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const botEndTime = Date.now() / 1000;
+
+      const botMessage: Message = {
+        role: 'bot',
+        message: text,
+        start: botStartTime,
+        end: botEndTime,
+      };
+
+      setChat(prev => [...prev, botMessage]);
+      setInitialPromptSent(true);
+
+    } catch (err) {
+      console.error('Errore durante la richiesta:', err);
+      const errorStartTime = Date.now() / 1000;
+      setChat([{
+        role: 'bot',
+        message: 'Errore durante la richiesta.',
+        start: errorStartTime,
+        end: Date.now() / 1000
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return {
+    chat, setChat, input, setInput, questions, loading, setLoading,
+    evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
+    chatHistory, setChatHistory, currentChatId, setCurrentChatId,
+    currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
+    initialPromptSent, setInitialPromptSent,
+    sendMessage: handleSendFromInput, // Esporta la funzione per l'input di testo
+    sendVoiceMessage: sendMessage,    // Esporta la funzione generica per la voce
+    startNewChat,
+    startInterview,
+    saveChat,
+  };
+};

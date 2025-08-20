@@ -9,6 +9,7 @@ interface ToolsMenuModalProps {
   onExportCharts: () => void;
   onExportChat: () => void;
   onImportTranscript: () => void;
+  onStartLiveMode: () => void; // <-- SINTASSI CORRETTA
   isExporting: boolean;
 }
 
@@ -19,6 +20,7 @@ const ToolsMenuModal: React.FC<ToolsMenuModalProps> = ({
   onExportCharts,
   onExportChat,
   onImportTranscript,
+  onStartLiveMode, // <-- AGGIUNTO QUI
   isExporting,
 }) => {
   // Funzione helper per gestire la chiusura prima dell'azione
@@ -40,6 +42,16 @@ const ToolsMenuModal: React.FC<ToolsMenuModalProps> = ({
         onPressOut={onClose}
       >
         <View style={styles.toolsMenuContainer}>
+          {/* --- PULSANTE MODALITÀ LIVE AGGIUNTO --- */}
+          <TouchableOpacity
+            style={styles.toolsMenuButton}
+            onPress={() => handlePress(onStartLiveMode)}
+          >
+            <Text style={styles.toolsMenuButtonText}>🎙️ Inizia Modalità Live</Text>
+          </TouchableOpacity>
+          <View style={styles.toolsMenuDivider} />
+          {/* ------------------------------------ */}
+
           <TouchableOpacity
             style={styles.toolsMenuButton}
             onPress={() => handlePress(onGenerateReport)}
@@ -75,7 +87,7 @@ const ToolsMenuModal: React.FC<ToolsMenuModalProps> = ({
   );
 };
 
-// Copia gli stili relativi da App.tsx qui
+
 const styles = StyleSheet.create({
   toolsModalOverlay: {
     flex: 1,

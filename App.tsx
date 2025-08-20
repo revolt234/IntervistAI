@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   Modal,
 } from 'react-native';
-
+import LiveIndicator from './components/LiveIndicator';
 import { useUIManager } from './hooks/useUIManager'; // <-- AGGIUNGI
 import ToolsMenuModal from './components/ToolsMenuModal'; // <-- AGGIUNGI
 import ChartsReportExport from './components/ChartsReportExport'; // default import (senza graffe)
@@ -25,7 +25,7 @@ import ExportModal from './components/ExportModal';
 import ChatInput from './components/ChatInput';
 import ChatMessages from './components/ChatMessages';
 import ChatHeader from './components/ChatHeader';
-
+import { useVoiceRecognition } from './hooks/useVoiceRecognition';
 import { API_KEY } from '@env';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -70,13 +70,14 @@ export default function App() {
     initialPromptSent, setInitialPromptSent,
     questions,
     sendMessage,
+     sendVoiceMessage,    // <-- AGGIUNGI QUESTA RIGA
     startNewChat,
     startInterview,
     saveChat
   } = useChatManager();
 
   const { exporting, exportChatToFile } = useExportManager();
-
+  const voiceManager = useVoiceRecognition(); // <-- AGGIUNGI QUESTA RIGA
   // ✅ 1. DICHIARA LO STATO PER LE METRICHE TEMPORANEE
   const [tempMetrics, setTempMetrics] = useState(null);
 
@@ -115,24 +116,49 @@ export default function App() {
 
 const { uiState, uiActions } = useUIManager();
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-
-
+const [isLiveMode, setIsLiveMode] = useState(false); // <-- AGGIUNGI SE MANCA
+const [isListeningPaused, setIsListeningPaused] = useState(false);
+const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [problemOptions, setProblemOptions] = useState<any[]>([]);
+
+const deactivateLiveMode = () => {
+  if (isLiveMode) {
+    voiceManager.stopListening();
+    setIsLiveMode(false);
+  }
+};
   const chatScrollViewRef = useRef<ScrollView>(null);
 
 
 
+useEffect(() => {
+  // Funzioni che aggiornano il nostro stato
+  const onStart = () => setIsBotSpeaking(true);
+  const onFinish = () => setIsBotSpeaking(false);
+  const onCancel = () => setIsBotSpeaking(false);
 
+  // Colleghiamo le funzioni agli eventi della libreria TTS
+  Tts.addEventListener('tts-start', onStart);
+  Tts.addEventListener('tts-finish', onFinish);
+  Tts.addEventListener('tts-cancel', onCancel);
 
-
+}, []); // L'array vuoto [] assicura che questo venga eseguito solo una volta all'avvio // L'array vuoto [] assicura che questo venga eseguito solo una volta all'avvio
 
 
 useEffect(() => {
-  if (voiceEnabled && chat.length > 0 && chat[chat.length - 1].role === 'bot') {
-    Tts.speak(chat[chat.length - 1].message);
+  // Se siamo in modalità live, il bot NON sta parlando, l'ascolto NON è in pausa e il microfono NON è già attivo...
+  if (isLiveMode && !isBotSpeaking && !isListeningPaused && !voiceManager.isListening) {
+    // ...allora è il turno dell'utente: avvia l'ascolto.
+    voiceManager.startListening();
   }
-}, [chat, voiceEnabled]);
-
+}, [isBotSpeaking, isLiveMode, isListeningPaused]); // Si attiva quando il bot smette di parlare o quando l'utente riprende l'ascolto
+useEffect(() => {
+  // Invia il messaggio solo se NON siamo in pausa
+  if (isLiveMode && !isListeningPaused && voiceManager.hasFinishedSpeaking && voiceManager.recognizedText) {
+    sendVoiceMessage(voiceManager.recognizedText, voiceManager.speechStartTime, voiceManager.speechEndTime);
+    voiceManager.resetFinishedSpeaking();
+  }
+}, [voiceManager.hasFinishedSpeaking, isListeningPaused]);
 
 useEffect(() => {
   const loadProblems = async () => {
@@ -148,7 +174,36 @@ useEffect(() => {
     loadProblems();
   }
 }, [chat]);
+// ...dopo l'ultimo useEffect esistente
 
+// Inserisci questo blocco di codice in App.tsx insieme agli altri useEffect
+
+useEffect(() => {
+  const lastMessage = chat[chat.length - 1];
+
+  // Controlliamo solo se l'ultimo messaggio è del bot
+  if (lastMessage?.role === 'bot') {
+    // Se la voce è abilitata o siamo in live mode, il bot deve parlare
+    if (voiceEnabled || isLiveMode) {
+      // Come sicurezza, fermiamo qualsiasi parlato precedente
+      Tts.stop();
+      // Se per caso il microfono fosse attivo, lo fermiamo
+      if (voiceManager.isListening) {
+        voiceManager.stopListening();
+      }
+      // Ora facciamo parlare il bot con il nuovo messaggio
+      Tts.speak(lastMessage.message);
+    }
+  }
+}, [chat]); // <-- La dipendenza è solo 'chat', quindi si attiva UNA SOLA VOLTA per ogni nuovo messaggio
+// useEffect N.2: GESTISCE IL MICROFONO DELL'UTENTE
+useEffect(() => {
+  // Se siamo in Modalità Live, il bot HA FINITO di parlare, l'ascolto NON è in pausa...
+  if (isLiveMode && !isBotSpeaking && !isListeningPaused) {
+    // ...allora è il turno dell'utente: avvia l'ascolto.
+    voiceManager.startListening();
+  }
+}, [isBotSpeaking, isListeningPaused, isLiveMode]); // Si attiva quando il bot smette di parlare
   const toggleVoice = () => {
     if (voiceEnabled) {
       Tts.stop();
@@ -161,8 +216,20 @@ const handleStartNewChat = async () => {
   }
   await handleStartInterviewAndChat();
 };
-
-
+const handleStartLiveMode = () => {
+  setIsLiveMode(true);
+  handleStartInterviewAndChat(true); // Avvia l'intervista in modalità live
+};
+const toggleLiveListening = () => {
+  // Se l'ascolto è in pausa, lo riattiviamo
+  if (isListeningPaused) {
+    voiceManager.startListening();
+    setIsListeningPaused(false);
+  } else { // Altrimenti, lo mettiamo in pausa
+    voiceManager.stopListening();
+    setIsListeningPaused(true);
+  }
+};
 
 const handleImportTranscript = async () => {
   const result = await JsonFileReader.importTranscriptFromFile();
@@ -208,12 +275,28 @@ const handleImportTranscript = async () => {
     );
   }
 };
-const handleStartInterviewAndChat = async () => {
+const handleStartInterviewAndChat = async (liveMode = false) => {
+  setIsLiveMode(liveMode);
+  if (liveMode) {
+    setIsListeningPaused(false);
+  }
   uiActions.setFirstLoad(false);
   await startInterview();
+  // Il microfono verrà avviato dall'useEffect che abbiamo aggiunto prima
 };
-
+const handleSelectProblemToEvaluate = (problem: any) => {
+  deactivateLiveMode();
+  handleEvaluateSingleProblem(problem);
+};
+const handleEndLiveMode = () => {
+  voiceManager.stopListening(); // Ferma il microfono
+};
+const handleOpenToolsMenu = () => {
+  deactivateLiveMode();
+  uiActions.openToolsMenu();
+};
   const loadChat = (chatId: string) => {
+      deactivateLiveMode();
     if (voiceEnabled) {
       Tts.stop();
     }
@@ -240,6 +323,7 @@ const handleStartInterviewAndChat = async () => {
   };
 // In App.tsx, all'interno del componente App()
 const handleGoHome = () => {
+     deactivateLiveMode();
   if (voiceEnabled) {
     Tts.stop();
   }
@@ -263,129 +347,172 @@ const handleGoHome = () => {
   };
 
   return (
-      <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container}>
+          <ChatHeader
+            onToggleHistoryModal={uiActions.openHistoryModal}
+            onNewChat={handleStartNewChat}
+            onGoHome={handleGoHome}
+            isOnHome={uiState.isFirstLoad}
+            voiceEnabled={voiceEnabled}
+            onToggleVoice={toggleVoice}
+            isLiveMode={isLiveMode}
+          />
 
-        <ChatHeader
-          onToggleHistoryModal={uiActions.openHistoryModal}
-          onNewChat={handleStartNewChat}
-          onGoHome={handleGoHome}
-          isOnHome={uiState.isFirstLoad}
-          voiceEnabled={voiceEnabled}
-          onToggleVoice={toggleVoice}
-        />
+          <View style={styles.chatContainer}>
+            {uiState.isFirstLoad && chat.length === 0 ? (
+              // --- SCHERMATA INIZIALE ---
+              <View style={styles.startInterviewContainer}>
+                <TouchableOpacity
+                  style={styles.startInterviewButton}
+                  onPress={() => handleStartInterviewAndChat(false)}
+                >
+                  <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
+                </TouchableOpacity>
 
-        <View style={styles.chatContainer}>
-          {uiState.isFirstLoad && chat.length === 0 ? (
-            <View style={styles.startInterviewContainer}>
-              <TouchableOpacity
-                style={styles.startInterviewButton}
-                onPress={handleStartInterviewAndChat}
-              >
-                <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#FFC107' }]}
+                  onPress={handleImportTranscript}
+                >
+                  <Text style={styles.startInterviewButtonText}>Valuta Intervista (JSON)</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#FFC107' }]}
-                onPress={handleImportTranscript}
-              >
-                <Text style={styles.startInterviewButtonText}>Valuta Intervista (JSON)</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              <ChatMessages
-                chat={chat}
-                loading={loading}
-                evaluating={evaluating}
-                problemOptions={problemOptions}
-                onEvaluateSingleProblem={handleEvaluateSingleProblem}
-              />
-
-              <ChatInput
-                input={input}
-                onChangeInput={setInput}
-                onSend={sendMessage}
-                loading={loading}
-                evaluating={evaluating}
-              />
-              <View style={styles.actionButtons}>
-                <View style={styles.toolsButtonContainer}>
-                  <Button
-                    title="🔧 Strumenti"
-                    onPress={uiActions.openToolsMenu}
-                    disabled={loading || evaluating || chat.length === 0}
-                    color="#673AB7"
-                  />
-                </View>
+                <TouchableOpacity
+                  style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#4CAF50' }]}
+                  onPress={() => handleStartInterviewAndChat(true)}
+                >
+                  <Text style={styles.startInterviewButtonText}>🎙️ Modalità Live (Voce)</Text>
+                </TouchableOpacity>
               </View>
-            </>
-          )}
-        </View>
+            ) : (
 
-        <ToolsMenuModal
-          visible={uiState.isToolsMenuVisible}
-          onClose={uiActions.closeToolsMenu}
-          onGenerateReport={handleEvaluateProblems}
-          onExportCharts={uiActions.openChartsModal}
-          onExportChat={uiActions.openExportModal}
-          onImportTranscript={handleImportTranscript}
-          isExporting={exporting}
-        />
+              <>
+                <ChatMessages
+                  chat={chat}
+                  loading={loading}
+                  evaluating={evaluating}
+                  problemOptions={problemOptions}
+                  onEvaluateSingleProblem={handleSelectProblemToEvaluate}
+                  disabled={isLiveMode && !isListeningPaused}
+                />
 
-        <HistoryModal
-          visible={uiState.showHistoryModal}
-          onClose={uiActions.closeHistoryModal}
-          chatHistory={chatHistory}
-          currentChatId={currentChatId}
-          onLoadChat={loadChat}
-          onDeleteChat={deleteChat}
-        />
+                {isLiveMode && (
+                  <LiveIndicator
+                    isListening={!isListeningPaused && voiceManager.isListening}
+                    recognizedText={voiceManager.recognizedText}
+                  />
+                )}
 
-        <ExportModal
-          visible={uiState.showExportModal}
-          onClose={uiActions.closeExportModal}
-          onSave={(fileName) => exportChatToFile(chat, fileName)}
-        />
-
-        {/* Modale per i grafici */}
-        <Modal
-          animationType="slide"
-          transparent={false}
-          visible={uiState.showChartsModal}
-          onRequestClose={uiActions.closeChartsModal}
-        >
-          <SafeAreaView style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Report Grafici</Text>
-              <TouchableOpacity onPress={uiActions.closeChartsModal}>
-                <Text style={styles.closeButton}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.modalContent}>
-              <ChartsReportExport
-                problems={problemOptions}
-                evaluationLog={chatHistory.find(c => c.id === currentChatId)?.evaluationLog}
-                onSaved={uiActions.closeChartsModal}
-              />
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
-
-        {/* Modale di caricamento */}
-        <Modal transparent={true} visible={evaluating || exporting}>
-          <View style={styles.loadingModal}>
-            <View style={styles.loadingContent}>
-              <ActivityIndicator size="large" color="#0000ff" />
-              <Text style={styles.loadingText}>
-                {exporting ? "Esportazione in corso..." : "Generazione del report in corso..."}
-              </Text>
-            </View>
+                {/* --- BARRA INFERIORE CON LOGICA CORRETTA --- */}
+              <View style={styles.bottomBar}>
+                {isLiveMode && !isListeningPaused ? (
+                  // CASO 1: Modalità Live ATTIVA (solo pulsante di pausa)
+                  <TouchableOpacity
+                    style={[styles.startInterviewButton, { backgroundColor: '#f44336' }]}
+                    onPress={toggleLiveListening} // Mette in pausa
+                  >
+                    <Text style={styles.startInterviewButtonText}>⏸️ Ferma Ascolto</Text>
+                  </TouchableOpacity>
+                ) : (
+                    // --- UI PER MODALITÀ TESTO ---
+                    <>
+                         <ChatInput
+                           input={input}
+                           onChangeInput={setInput}
+                           onSend={sendMessage}
+                           loading={loading}
+                           evaluating={evaluating}
+                         />
+                         <View style={styles.actionButtons}>
+                           {/* Mostra il pulsante "Riprendi" solo se siamo in live mode e in pausa */}
+                           {isLiveMode && isListeningPaused && (
+                             <View style={styles.toolsButtonContainer}>
+                               <Button
+                                 title="▶️ Riprendi"
+                                 onPress={toggleLiveListening} // Riprende l'ascolto
+                                 color="#4CAF50"
+                               />
+                             </View>
+                           )}
+                           <View style={styles.toolsButtonContainer}>
+                             <Button
+                               title="🔧 Strumenti"
+                               onPress={handleOpenToolsMenu}
+                               disabled={loading || evaluating || chat.length === 0}
+                               color="#673AB7"
+                             />
+                           </View>
+                         </View>
+                       </>
+                     )}
+                   </View>
+              </>
+            )}
           </View>
-        </Modal>
 
-      </SafeAreaView>
-    );
-}
+          {/* --- MODALI --- */}
+          <ToolsMenuModal
+            visible={uiState.isToolsMenuVisible}
+            onClose={uiActions.closeToolsMenu}
+            onGenerateReport={handleEvaluateProblems}
+            onExportCharts={uiActions.openChartsModal}
+            onExportChat={uiActions.openExportModal}
+            onImportTranscript={handleImportTranscript}
+            onStartLiveMode={handleStartLiveMode}
+            isExporting={exporting}
+          />
+
+          <HistoryModal
+            visible={uiState.showHistoryModal}
+            onClose={uiActions.closeHistoryModal}
+            chatHistory={chatHistory}
+            currentChatId={currentChatId}
+            onLoadChat={loadChat}
+            onDeleteChat={deleteChat}
+          />
+
+          <ExportModal
+            visible={uiState.showExportModal}
+            onClose={uiActions.closeExportModal}
+            onSave={(fileName) => exportChatToFile(chat, fileName)}
+          />
+
+          <Modal
+            animationType="slide"
+            transparent={false}
+            visible={uiState.showChartsModal}
+            onRequestClose={uiActions.closeChartsModal}
+          >
+            <SafeAreaView style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Report Grafici</Text>
+                <TouchableOpacity onPress={uiActions.closeChartsModal}>
+                  <Text style={styles.closeButton}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.modalContent}>
+                <ChartsReportExport
+                  problems={problemOptions}
+                  evaluationLog={chatHistory.find(c => c.id === currentChatId)?.evaluationLog}
+                  onSaved={uiActions.closeChartsModal}
+                />
+              </ScrollView>
+            </SafeAreaView>
+          </Modal>
+
+          <Modal transparent={true} visible={evaluating || exporting}>
+            <View style={styles.loadingModal}>
+              <View style={styles.loadingContent}>
+                <ActivityIndicator size="large" color="#0000ff" />
+                <Text style={styles.loadingText}>
+                  {exporting ? "Esportazione in corso..." : "Generazione del report in corso..."}
+                </Text>
+              </View>
+            </View>
+          </Modal>
+
+        </SafeAreaView>
+      );
+  }
 
 const styles = StyleSheet.create({
   container: {

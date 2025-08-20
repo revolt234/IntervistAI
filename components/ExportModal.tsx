@@ -23,7 +23,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
 
   useEffect(() => {
     if (visible) {
-      setFileName(`Conversazione_${new Date().toISOString().split('T')[0]}`);
+      setFileName(`Conversazione_${new Date().toISOString().split('T')[0]}.json`);
     }
   }, [visible]);
 
@@ -43,6 +43,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
             value={fileName}
             onChangeText={setFileName}
             placeholder="Inserisci nome file"
+            placeholderTextColor="#999" // Aggiunto per migliorare la visibilità del placeholder
             autoFocus
           />
 
@@ -84,6 +85,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 15,
+    color: '#000', // Aggiunto per coerenza
   },
   input: {
     borderWidth: 1,
@@ -91,6 +93,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     padding: 10,
     marginBottom: 15,
+    color: '#000', // <-- QUESTA È LA MODIFICA CHIAVE
   },
   buttonRow: {
     flexDirection: 'row',
@@ -103,7 +106,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancel: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#888',
     marginRight: 10,
   },
   save: {
@@ -111,6 +114,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: 'white',
+    fontWeight: 'bold',
   },
 });
 

@@ -5,7 +5,8 @@ import {
   Text,
   ActivityIndicator,
   TouchableOpacity,
-  Modal
+  Modal,
+  StyleSheet, // <-- Importa StyleSheet
 } from 'react-native';
 
 interface ChatMessagesProps {
@@ -13,6 +14,7 @@ interface ChatMessagesProps {
   loading: boolean;
   evaluating: boolean;
   problemOptions: any[];
+   disabled: boolean; // Aggiungi questa prop
   onEvaluateSingleProblem: (problem: any) => void;
 }
 
@@ -21,7 +23,8 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
   loading,
   evaluating,
   problemOptions,
-  onEvaluateSingleProblem
+  onEvaluateSingleProblem,
+  disabled // <-- AGGIUNGI QUESTA
 }) => {
   const scrollRef = useRef<ScrollView>(null);
   const [dropdownVisible, setDropdownVisible] = React.useState(false);
@@ -29,8 +32,8 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
   return (
     <>
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16 }}
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
         ref={scrollRef}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
@@ -39,40 +42,33 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
           .map((msg, index) => (
             <View
               key={index}
-              style={{
-                alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                backgroundColor: msg.role === 'user' ? '#dcf8c6' : '#eee',
-                padding: 10,
-                marginVertical: 4,
-                borderRadius: 8,
-                maxWidth: '80%',
-              }}
+              style={[
+                styles.messageBubble, // Stile base per la bolla
+                msg.role === 'user' ? styles.userBubble : styles.botBubble, // Stili specifici
+              ]}
             >
-              <Text>{msg.message}</Text>
+              {/* --- QUESTA È LA MODIFICA CHIAVE --- */}
+              <Text style={styles.messageText}>{msg.message}</Text>
             </View>
           ))}
 
         {(loading || evaluating) && (
-          <View style={{ alignSelf: 'flex-start', padding: 10, backgroundColor: '#eee', borderRadius: 8 }}>
-            <ActivityIndicator size="small" color="#0000ff" />
-            <Text>{evaluating ? 'Generando report...' : 'Caricando...'}</Text>
+          <View style={[styles.messageBubble, styles.botBubble]}>
+            <ActivityIndicator size="small" color="#000" />
+            <Text style={styles.loadingText}>{evaluating ? 'Generando report...' : 'Caricando...'}</Text>
           </View>
         )}
       </ScrollView>
 
+      {/* La parte del modale per la valutazione rimane invariata */}
       {chat.length > 0 && problemOptions.length > 0 && (
-        <View style={{ paddingHorizontal: 10, marginBottom: 10 }}>
-          <TouchableOpacity
-            style={{
-              borderWidth: 1,
-              borderColor: '#ccc',
-              borderRadius: 5,
-              padding: 12,
-              backgroundColor: '#f5f5f5',
-            }}
-            onPress={() => setDropdownVisible(true)}
-          >
-            <Text style={{ color: '#333' }}>📋 Seleziona un fenomeno da valutare</Text>
+        <View style={styles.evaluationContainer}>
+        <TouchableOpacity
+          style={styles.dropdownButton}
+          onPress={() => setDropdownVisible(true)}
+          disabled={disabled} // <-- AGGIUNGI QUESTA RIGA
+        >
+            <Text style={styles.dropdownButtonText}>📋 Seleziona un fenomeno da valutare</Text>
           </TouchableOpacity>
 
           <Modal
@@ -82,35 +78,22 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
             onRequestClose={() => setDropdownVisible(false)}
           >
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }}
+              style={styles.modalOverlay}
               activeOpacity={1}
               onPressOut={() => setDropdownVisible(false)}
             >
-              <View
-                style={{
-                  marginTop: 100,
-                  marginHorizontal: 20,
-                  backgroundColor: 'white',
-                  borderRadius: 8,
-                  padding: 10,
-                  maxHeight: 300,
-                }}
-              >
+              <View style={styles.modalContent}>
                 <ScrollView>
                   {problemOptions.map((problem, index) => (
                     <TouchableOpacity
                       key={index}
-                      style={{
-                        padding: 12,
-                        borderBottomWidth: 1,
-                        borderColor: '#eee',
-                      }}
+                      style={styles.problemOption}
                       onPress={() => {
                         setDropdownVisible(false);
                         onEvaluateSingleProblem(problem);
                       }}
                     >
-                      <Text style={{ fontSize: 16 }}>{problem.fenomeno}</Text>
+                      <Text style={styles.problemText}>{problem.fenomeno}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -122,5 +105,72 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
     </>
   );
 };
+
+// --- STYLESHEET AGGIUNTO E ORGANIZZATO ---
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 16,
+  },
+  messageBubble: {
+    padding: 12,
+    marginVertical: 4,
+    borderRadius: 12,
+    maxWidth: '80%',
+  },
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#dcf8c6',
+  },
+  botBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#eee',
+  },
+  messageText: {
+    fontSize: 16,
+    color: '#000', // <-- Colore del testo impostato a nero
+  },
+  loadingText: {
+    color: '#000',
+    marginLeft: 8,
+  },
+  evaluationContainer: {
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  dropdownButton: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    padding: 12,
+    backgroundColor: '#f5f5f5',
+  },
+  dropdownButtonText: {
+    color: '#333',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+  },
+  modalContent: {
+    marginHorizontal: 20,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 10,
+    maxHeight: 300,
+  },
+  problemOption: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+  },
+  problemText: {
+    fontSize: 16,
+    color: '#000',
+  },
+});
 
 export default ChatMessages;
