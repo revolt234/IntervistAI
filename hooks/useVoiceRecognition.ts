@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+// useVoiceRecognition.ts
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
 
 export const useVoiceRecognition = () => {
@@ -7,55 +8,65 @@ export const useVoiceRecognition = () => {
   const [hasFinishedSpeaking, setHasFinishedSpeaking] = useState(false);
   const [error, setError] = useState('');
 
-  // --- NUOVI STATI PER I TIMESTAMP ---
+  // --- STATI PER I TIMESTAMP ---
   const [speechStartTime, setSpeechStartTime] = useState(0);
   const [speechEndTime, setSpeechEndTime] = useState(0);
-  // ------------------------------------
 
   const speechTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const onSpeechResults = (e: SpeechResultsEvent) => {
+  const onSpeechResults = useCallback((e: SpeechResultsEvent) => {
     const text = e.value?.[0] || '';
     setRecognizedText(text);
 
     if (speechTimeout.current) {
       clearTimeout(speechTimeout.current);
     }
+    // Timeout di 2 secondi per rilevare la fine del parlato
+// in onSpeechResults...
     speechTimeout.current = setTimeout(() => {
-      // Quando l'utente smette di parlare, registriamo l'ora di fine
-      setSpeechEndTime(Date.now() / 1000);
+      // ✅ SOTTRAI I 2 SECONDI DI TIMEOUT DAL TIMESTAMP FINALE
+      setSpeechEndTime((Date.now() / 1000) - 2);
       setHasFinishedSpeaking(true);
-    }, 4000);
-  };
+    }, 2000);
+  }, []);
 
-  const onSpeechError = (e: SpeechErrorEvent) => {
+  const onSpeechError = useCallback((e: SpeechErrorEvent) => {
     setError(JSON.stringify(e.error));
-  };
+    setIsListening(false);
+  }, []);
 
-  const startListening = async () => {
-    // Resettiamo tutti gli stati prima di iniziare
-    setIsListening(true);
+  // ✅ 1. NUOVA FUNZIONE DI RESET
+  // Centralizza tutta la logica per pulire lo stato del microfono.
+  const reset = () => {
+    setIsListening(false);
     setRecognizedText('');
     setHasFinishedSpeaking(false);
     setError('');
-    setSpeechStartTime(0); // Resetta timestamp
-    setSpeechEndTime(0);   // Resetta timestamp
+    setSpeechStartTime(0);
+    setSpeechEndTime(0);
+  };
+
+  const startListening = async () => {
+    reset(); // ✅ 2. USA LA NUOVA FUNZIONE QUI per pulire tutto
+    setIsListening(true); // E poi imposta solo lo stato di ascolto
 
     try {
       await Voice.start('it-IT');
-      // Quando l'ascolto inizia, registriamo l'ora di inizio
       setSpeechStartTime(Date.now() / 1000);
     } catch (e) {
       console.error('Errore startListening:', e);
+      setError(e.message);
+      setIsListening(false);
     }
   };
 
   const stopListening = async () => {
     try {
       await Voice.stop();
-      setIsListening(false);
     } catch (e) {
       console.error('Errore stopListening:', e);
+    } finally {
+      setIsListening(false);
     }
   };
 
@@ -69,17 +80,18 @@ export const useVoiceRecognition = () => {
         clearTimeout(speechTimeout.current);
       }
     };
-  }, []);
+  }, [onSpeechResults, onSpeechError]);
 
   return {
     isListening,
     recognizedText,
     hasFinishedSpeaking,
     error,
-    speechStartTime, // <-- Esponiamo il nuovo stato
-    speechEndTime,   // <-- Esponiamo il nuovo stato
+    speechStartTime,
+    speechEndTime,
     startListening,
     stopListening,
     resetFinishedSpeaking: () => setHasFinishedSpeaking(false),
+    reset, // ✅ 3. ESPONI LA NUOVA FUNZIONE per poterla usare in App.tsx
   };
 };

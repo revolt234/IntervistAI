@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+// useChatManager.ts
+import { useState, useEffect, useCallback } from 'react'; // ✅ Aggiungi useCallback
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Tts from 'react-native-tts';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -37,6 +38,7 @@ export const useChatManager = () => {
   const [askedQuestions, setAskedQuestions] = useState<string[]>([]);
   const [initialPromptSent, setInitialPromptSent] = useState(false);
 
+  // --- Gli useEffect rimangono quasi invariati ---
   useEffect(() => {
     Tts.getInitStatus().then(() => Tts.setDefaultLanguage('it-IT'));
     JsonFileReader.getRandomMedicalQuestions().then(setQuestions).catch(console.error);
@@ -64,20 +66,16 @@ export const useChatManager = () => {
     }
   }, [chatHistory]);
 
+
+  // --- Logica delle funzioni principali ---
+
   const saveChat = () => {
     if (chat.length === 0) return;
-
-    const firstUserMsg = chat.find(
-      msg => msg.role === 'user' && !msg.message.includes('INIZIO_INTERVISTA_NASCOSTO')
-    );
-    const title = firstUserMsg
-      ? firstUserMsg.message.slice(0, 30) + (firstUserMsg.message.length > 30 ? '...' : '')
-      : 'Nuova conversazione';
-
+    const firstUserMsg = chat.find(msg => msg.role === 'user' && !msg.message.includes('INIZIO_INTERVISTA_NASCOSTO'));
+    const title = firstUserMsg ? firstUserMsg.message.slice(0, 30) + (firstUserMsg.message.length > 30 ? '...' : '') : 'Nuova conversazione';
     setChatHistory(prev => {
       const existingIdx = prev.findIndex(c => c.id === currentChatId);
       const existing = existingIdx >= 0 ? prev[existingIdx] : undefined;
-
       const updatedChat: Chat = {
         id: currentChatId,
         title,
@@ -86,7 +84,6 @@ export const useChatManager = () => {
         evaluationScores: currentEvaluationScores,
         evaluationLog: existing?.evaluationLog ?? {},
       };
-
       if (existingIdx >= 0) {
         const newHistory = [...prev];
         newHistory[existingIdx] = { ...existing, ...updatedChat };
@@ -100,7 +97,6 @@ export const useChatManager = () => {
   const startNewChat = async () => {
     Tts.stop();
     if (chat.length > 0) saveChat();
-
     setChat([]);
     setInput('');
     setHasAskedForNameAndBirth(false);
@@ -108,7 +104,6 @@ export const useChatManager = () => {
     setInitialPromptSent(false);
     setCurrentEvaluationScores({});
     setAskedQuestions([]);
-
     try {
       const newQuestions = await JsonFileReader.getRandomMedicalQuestions();
       setQuestions(newQuestions);
@@ -116,35 +111,40 @@ export const useChatManager = () => {
       console.error('Errore durante il caricamento delle nuove domande:', error);
     }
   };
+const updateLastBotMessageTimestamp = useCallback((type: 'start' | 'end') => {
+    setChat(prevChat => {
+      const newChat = [...prevChat];
+      // Trova l'indice dell'ultimo messaggio del bot partendo dalla fine
+      const lastBotMsgIndex = newChat.map(m => m.role).lastIndexOf('bot');
 
-  const sendMessage = async (messageText: string) => {
-    if (!messageText.trim()) return;
-
-    const userStartTime = Date.now() / 1000;
-    const userMessage: Message = {
-      role: 'user',
-      message: messageText,
-      start: userStartTime,
-      end: Date.now() / 1000,
-    };
-
-    setChat(prev => {
-        if (!initialPromptSent && prev.length > 0 && prev[0]?.message === 'INIZIO_INTERVISTA_NASCOSTO') {
-            return [...prev.slice(1), userMessage];
+      if (lastBotMsgIndex !== -1) {
+        // Aggiorna il timestamp corretto
+        const updatedMessage = { ...newChat[lastBotMsgIndex] };
+        if (type === 'start') {
+          updatedMessage.start = Date.now() / 1000;
+        } else {
+          updatedMessage.end = Date.now() / 1000;
         }
-        return [...prev, userMessage];
+        newChat[lastBotMsgIndex] = updatedMessage;
+        return newChat;
+      }
+      return prevChat; // Ritorna la chat invariata se non trova un messaggio del bot
     });
-    
+  }, []);
+  // ✅ 1. LOGICA IA CENTRALIZZATA
+  // Ho estratto la logica per la risposta del bot in una funzione separata per non duplicare codice.
+  const getBotResponse = async (currentUserMessage: Message, currentChat: Message[]) => {
     setLoading(true);
-
     try {
-      const chatHistoryForAI = chat.map(msg => ({
+      const chatHistoryForAI = currentChat.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'model',
         parts: [{ text: msg.message }],
       }));
+
+      // Aggiungiamo anche il messaggio corrente dell'utente per il contesto
       chatHistoryForAI.push({
         role: 'user',
-        parts: [{ text: messageText }],
+        parts: [{ text: currentUserMessage.message }],
       });
 
       let prompt = '';
@@ -152,7 +152,7 @@ export const useChatManager = () => {
         prompt = 'Chiedimi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
         setHasAskedForNameAndBirth(true);
       } else {
-        prompt = `RISPOSTA PAZIENTE: ${messageText}
+        prompt = `RISPOSTA PAZIENTE: ${currentUserMessage.message}
                                  ### TU DEVI SEGUIRE QUESTE REGOLE:
                                  Seguono 2 punti (punto 1 e punto 2), devi seguire sempre attentamente queste regole, senza mai tralasciare nulla al caso, tenendo in considerazione che devi dare priorità fondamentale al punto 1, e solo se non si ricade nelle sue casistiche passare al punto 2 (non includere messaggi aggiuntivi come "il paziente..."):
                                  punto 1. **Fase di controllo prima di considerare il punto 2:**
@@ -191,97 +191,110 @@ export const useChatManager = () => {
                                     - Se tutte le domande disponibili sono state fatte ringrazia il Paziente per aver risposto e concludi l'intervista (ESEMPIO:"Grazie per aver risposto, le domande sono finite")`;
       }
 
-      const chatSession = model.startChat({ history: chatHistoryForAI });
+       const chatSession = model.startChat({ history: chatHistoryForAI });
+           const result = await chatSession.sendMessage(prompt);
+           const text = result.response.text();
 
-      const botStartTime = Date.now() / 1000;
-      const result = await chatSession.sendMessage(prompt);
-      const response = await result.response;
-      const text = response.text();
-      const botEndTime = Date.now() / 1000;
+           // ✅ Usiamo timestamp segnaposto che verranno aggiornati dopo
+           const botMessage: Message = {
+             role: 'bot',
+             message: text,
+             start: 0,
+             end: 0,
+           };
+            setChat(prev => [...prev, botMessage]);
+            setInitialPromptSent(true);
+          } catch (err) {
+            console.error('Errore durante la richiesta a Gemini:', err);
+            const errorStartTime = Date.now() / 1000;
+            setChat(prev => [...prev, { role: 'bot', message: 'Errore durante la richiesta.', start: errorStartTime, end: Date.now() / 1000 }]);
+          } finally {
+            setLoading(false);
+          }
+        };
 
-      const botMessage: Message = {
-        role: 'bot',
-        message: text,
-        start: botStartTime,
-        end: botEndTime,
+        // ✅ 2. FUNZIONE SPECIFICA PER I MESSAGGI DI TESTO
+        const sendMessage = (messageText: string) => {
+          if (!messageText.trim()) return;
+
+          const now = Date.now() / 1000;
+          const userMessage: Message = {
+            role: 'user',
+            message: messageText,
+            start: now, // Per i messaggi di testo, start e end sono uguali
+            end: now,
+          };
+
+          const updatedChat = [...chat, userMessage];
+          setChat(updatedChat);
+          getBotResponse(userMessage, chat); // Chiama la funzione centralizzata
+        };
+
+        // ✅ 3. FUNZIONE SPECIFICA PER I MESSAGGI VOCALI (LA TUA CORREZIONE)
+        // Questa funzione accetta start e end come parametri e li usa.
+        const sendVoiceMessage = (messageText: string, startTime: number, endTime: number) => {
+          if (!messageText.trim()) return;
+
+          const userMessage: Message = {
+            role: 'user',
+            message: messageText,
+            start: startTime, // Usa il timestamp di inizio fornito
+            end: endTime,     // Usa il timestamp di fine fornito
+          };
+
+          const updatedChat = [...chat, userMessage];
+          setChat(updatedChat);
+          getBotResponse(userMessage, chat); // Chiama la funzione centralizzata
+        };
+
+        const handleSendFromInput = () => {
+          if (input.trim()) {
+            sendMessage(input);
+            setInput('');
+          }
+        };
+
+        const startInterview = async () => {
+          setLoading(true);
+          setHasAskedForNameAndBirth(true);
+          try {
+            const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
+            const hiddenMessage: Message = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO', start: 0, end: 0 };
+            setChat([hiddenMessage]);
+
+            const chatSession = model.startChat({ history: [{ role: 'user', parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }] }] });
+            const result = await chatSession.sendMessage(prompt);
+            const text = result.response.text();
+
+            // ✅ Usiamo timestamp segnaposto anche qui
+            const botMessage: Message = {
+              role: 'bot',
+              message: text,
+              start: 0,
+              end: 0,
+            };
+            setChat(prev => [...prev, botMessage]);
+            setInitialPromptSent(true);
+          } catch (err) {
+            console.error('Errore durante la richiesta:', err);
+            const errorStartTime = Date.now() / 1000;
+            setChat([{ role: 'bot', message: 'Errore durante la richiesta.', start: errorStartTime, end: Date.now() / 1000 }]);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        return {
+          chat, setChat, input, setInput, questions, loading, setLoading,
+          evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
+          chatHistory, setChatHistory, currentChatId, setCurrentChatId,
+          currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
+          initialPromptSent, setInitialPromptSent,
+          sendMessage: handleSendFromInput,
+          sendVoiceMessage: sendVoiceMessage,
+          startNewChat,
+          startInterview,
+          saveChat,
+          updateLastBotMessageTimestamp, // ✅ AGGIUNGI QUESTA RIGA
+        };
       };
-
-      setChat(prev => [...prev, botMessage]);
-      setInitialPromptSent(true);
-
-    } catch (err) {
-      console.error('Errore durante la richiesta a Gemini:', err);
-      const errorStartTime = Date.now() / 1000;
-      setChat(prev => [...prev, {
-        role: 'bot',
-        message: 'Errore durante la richiesta.',
-        start: errorStartTime,
-        end: Date.now() / 1000
-      }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSendFromInput = () => {
-    if (input.trim()) {
-      sendMessage(input);
-      setInput('');
-    }
-  };
-
-  const startInterview = async () => {
-    setLoading(true);
-    setHasAskedForNameAndBirth(true);
-
-    try {
-      const prompt = 'Chiedi gentilmente nome e data di nascita, serve solo che fai questo senza confermare la comprensione di questa richiesta.';
-      const hiddenMessage: Message = { role: 'user', message: 'INIZIO_INTERVISTA_NASCOSTO', start: 0, end: 0 };
-      setChat([hiddenMessage]);
-      const chatSession = model.startChat({
-        history: [{ role: 'user', parts: [{ text: 'INIZIO_INTERVISTA_NASCOSTO' }] }],
-      });
-
-      const botStartTime = Date.now() / 1000;
-      const result = await chatSession.sendMessage(prompt);
-      const response = await result.response;
-      const text = response.text();
-      const botEndTime = Date.now() / 1000;
-
-      const botMessage: Message = {
-        role: 'bot',
-        message: text,
-        start: botStartTime,
-        end: botEndTime,
-      };
-
-      setChat(prev => [...prev, botMessage]);
-      setInitialPromptSent(true);
-
-    } catch (err) {
-      console.error('Errore durante la richiesta:', err);
-      const errorStartTime = Date.now() / 1000;
-      setChat([{
-        role: 'bot',
-        message: 'Errore durante la richiesta.',
-        start: errorStartTime,
-        end: Date.now() / 1000
-      }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return {
-    chat, setChat, input, setInput, questions, loading, setLoading,
-    evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
-    chatHistory, setChatHistory, currentChatId, setCurrentChatId,
-    currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
-    initialPromptSent, setInitialPromptSent,
-    sendMessage: handleSendFromInput, // Esporta la funzione per l'input di testo
-    sendVoiceMessage: sendMessage,    // Esporta la funzione generica per la voce
-    startNewChat,
-    startInterview,
-    saveChat,
-  };
-};

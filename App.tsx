@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
+    LogBox, // <-- AGGIUNGI QUESTA RIGA
 } from 'react-native';
 import LiveIndicator from './components/LiveIndicator';
 import { useUIManager } from './hooks/useUIManager'; // <-- AGGIUNGI
@@ -33,7 +34,9 @@ import JsonFileReader from './android/app/src/services/JsonFileReader';
 import Tts from 'react-native-tts';
 import { useChatManager } from './hooks/useChatManager'; // 👈 nuovo import
 
-
+LogBox.ignoreLogs([
+  'new NativeEventEmitter', // Questo ignorerà tutti gli avvisi che iniziano con "new NativeEventEmitter"
+]);
 interface Chat {
   id: string;
   title: string;
@@ -74,13 +77,16 @@ export default function App() {
     startNewChat,
     startInterview,
     saveChat
+
   } = useChatManager();
 
   const { exporting, exportChatToFile } = useExportManager();
   const voiceManager = useVoiceRecognition(); // <-- AGGIUNGI QUESTA RIGA
   // ✅ 1. DICHIARA LO STATO PER LE METRICHE TEMPORANEE
   const [tempMetrics, setTempMetrics] = useState(null);
-
+  // ✅ AGGIUNGI QUESTA RIGA:
+  // Questo "flag" ci aiuterà a sapere se la conversazione live è iniziata davvero
+  const hasLiveConversationStarted = useRef(false);
   // ✅ 2. PASSA LE METRICHE CORRETTE A useEvaluationManager
   const chatObj = chatHistory.find(c => c.id === currentChatId);
 
@@ -121,40 +127,28 @@ const [isListeningPaused, setIsListeningPaused] = useState(false);
 const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [problemOptions, setProblemOptions] = useState<any[]>([]);
 
+// App.tsx
+
 const deactivateLiveMode = () => {
   if (isLiveMode) {
     voiceManager.stopListening();
+
+    // ✅ AGGIUNGI QUESTA RIGA
+    // Pulisce tutto lo stato del microfono (incluso il testo riconosciuto).
+    voiceManager.reset();
+
     setIsLiveMode(false);
   }
 };
   const chatScrollViewRef = useRef<ScrollView>(null);
 
-
-
-useEffect(() => {
-  // Funzioni che aggiornano il nostro stato
-  const onStart = () => setIsBotSpeaking(true);
-  const onFinish = () => setIsBotSpeaking(false);
-  const onCancel = () => setIsBotSpeaking(false);
-
-  // Colleghiamo le funzioni agli eventi della libreria TTS
-  Tts.addEventListener('tts-start', onStart);
-  Tts.addEventListener('tts-finish', onFinish);
-  Tts.addEventListener('tts-cancel', onCancel);
-
-}, []); // L'array vuoto [] assicura che questo venga eseguito solo una volta all'avvio // L'array vuoto [] assicura che questo venga eseguito solo una volta all'avvio
-
-
-useEffect(() => {
-  // Se siamo in modalità live, il bot NON sta parlando, l'ascolto NON è in pausa e il microfono NON è già attivo...
-  if (isLiveMode && !isBotSpeaking && !isListeningPaused && !voiceManager.isListening) {
-    // ...allora è il turno dell'utente: avvia l'ascolto.
-    voiceManager.startListening();
-  }
-}, [isBotSpeaking, isLiveMode, isListeningPaused]); // Si attiva quando il bot smette di parlare o quando l'utente riprende l'ascolto
 useEffect(() => {
   // Invia il messaggio solo se NON siamo in pausa
   if (isLiveMode && !isListeningPaused && voiceManager.hasFinishedSpeaking && voiceManager.recognizedText) {
+
+    // ✅ AGGIUNGI QUESTA RIGA PER DISATTIVARE SUBITO IL MICROFONO
+    voiceManager.stopListening();
+
     sendVoiceMessage(voiceManager.recognizedText, voiceManager.speechStartTime, voiceManager.speechEndTime);
     voiceManager.resetFinishedSpeaking();
   }
@@ -174,10 +168,40 @@ useEffect(() => {
     loadProblems();
   }
 }, [chat]);
-// ...dopo l'ultimo useEffect esistente
+// In App.tsx, sostituisci tutti i vecchi useEffect per TTS e microfono con questi due:
 
-// Inserisci questo blocco di codice in App.tsx insieme agli altri useEffect
+// 1. useEffect per IMPOSTARE i listener (CRASH-PROOF)
+// Questo si esegue solo una volta e non tenta mai di rimuovere i listener, evitando il bug.
+useEffect(() => {
+  const onStart = () => setIsBotSpeaking(true);
+  const onFinish = () => setIsBotSpeaking(false);
+  const onCancel = () => setIsBotSpeaking(false);
 
+  Tts.addEventListener('tts-start', onStart);
+  Tts.addEventListener('tts-finish', onFinish);
+  Tts.addEventListener('tts-cancel', onCancel);
+}, []); // L'array vuoto [] è fondamentale
+
+// 2. useEffect per GESTIRE il microfono in modo intelligente
+useEffect(() => {
+  // Se il bot inizia a parlare, l'unica cosa che facciamo
+  // è impostare il nostro flag per dire "la conversazione è iniziata".
+  if (isBotSpeaking) {
+    hasLiveConversationStarted.current = true;
+    return; // Usciamo subito, non dobbiamo fare altro.
+  }
+
+  // Se arriviamo qui, significa che isBotSpeaking è `false`.
+  // Ora controlliamo se la conversazione è effettivamente iniziata.
+  if (hasLiveConversationStarted.current && isLiveMode && !isListeningPaused) {
+    // Se tutte le condizioni sono vere:
+    // 1. La conversazione è iniziata (il bot ha parlato almeno una volta).
+    // 2. Il bot NON sta parlando ora.
+    // 3. Siamo in modalità live e non in pausa.
+    // -> È il momento perfetto per attivare il microfono.
+    voiceManager.startListening();
+  }
+}, [isBotSpeaking, isLiveMode, isListeningPaused]); // Si attiva solo quando questi stati cambiano
 useEffect(() => {
   const lastMessage = chat[chat.length - 1];
 
@@ -196,14 +220,7 @@ useEffect(() => {
     }
   }
 }, [chat]); // <-- La dipendenza è solo 'chat', quindi si attiva UNA SOLA VOLTA per ogni nuovo messaggio
-// useEffect N.2: GESTISCE IL MICROFONO DELL'UTENTE
-useEffect(() => {
-  // Se siamo in Modalità Live, il bot HA FINITO di parlare, l'ascolto NON è in pausa...
-  if (isLiveMode && !isBotSpeaking && !isListeningPaused) {
-    // ...allora è il turno dell'utente: avvia l'ascolto.
-    voiceManager.startListening();
-  }
-}, [isBotSpeaking, isListeningPaused, isLiveMode]); // Si attiva quando il bot smette di parlare
+
   const toggleVoice = () => {
     if (voiceEnabled) {
       Tts.stop();
@@ -275,14 +292,17 @@ const handleImportTranscript = async () => {
     );
   }
 };
+// In App.tsx
 const handleStartInterviewAndChat = async (liveMode = false) => {
   setIsLiveMode(liveMode);
   if (liveMode) {
     setIsListeningPaused(false);
+    // ✅ AGGIUNGI QUESTA RIGA:
+    // Resettiamo il flag ogni volta che iniziamo una nuova sessione live
+    hasLiveConversationStarted.current = false;
   }
   uiActions.setFirstLoad(false);
   await startInterview();
-  // Il microfono verrà avviato dall'useEffect che abbiamo aggiunto prima
 };
 const handleSelectProblemToEvaluate = (problem: any) => {
   deactivateLiveMode();
