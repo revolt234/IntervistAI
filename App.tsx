@@ -1,7 +1,7 @@
 
 //App.tsx
 import React, { useState, useEffect, useRef } from 'react';
-
+import TranscriptAnalytics from './android/app/src/services/TranscriptAnalytics'; // ✅ Aggiungi questa riga
 import {
   SafeAreaView,
   Text,
@@ -76,9 +76,9 @@ export default function App() {
      sendVoiceMessage,    // <-- AGGIUNGI QUESTA RIGA
     startNewChat,
     startInterview,
-    saveChat
-
-  } = useChatManager();
+   saveChat,
+      updateLastBotMessageTimestamp, // ✅ Recupera la nuova funzione
+    } = useChatManager();
 
   const { exporting, exportChatToFile } = useExportManager();
   const voiceManager = useVoiceRecognition(); // <-- AGGIUNGI QUESTA RIGA
@@ -90,33 +90,21 @@ export default function App() {
   // ✅ 2. PASSA LE METRICHE CORRETTE A useEvaluationManager
   const chatObj = chatHistory.find(c => c.id === currentChatId);
 
-  const metricsForEvaluation = tempMetrics ?? {
-    avgTimeResponse: chatObj?.avgTimeResponse,
-    avgResponseLength: chatObj?.avgResponseLength,
-    counterInterruption: chatObj?.counterInterruption,
-    avgSpeechRate: chatObj?.avgSpeechRate, // <-- AGGIUNGI
-      maxSpeechRate: chatObj?.maxSpeechRate, // <-- AGGIUNGI
-  };
-
 
  const {
-   handleEvaluateSingleProblem,
-   handleEvaluateProblems,
-   extractScoreFromText
- } = useEvaluationManager({
-   chat,
-   setChat,
-   chatHistory,
-   currentChatId,
-   setEvaluating,
-   setCurrentEvaluationScores,
-   avgTimeResponse: metricsForEvaluation?.avgTimeResponse,
-   avgResponseLength: metricsForEvaluation?.avgResponseLength,
-   counterInterruption: metricsForEvaluation?.counterInterruption,
-   avgSpeechRate: metricsForEvaluation?.avgSpeechRate, // <-- AGGIUNGI
-      maxSpeechRate: metricsForEvaluation?.maxSpeechRate, // <-- AGGIUNGI
-      setChatHistory,
- });
+    handleEvaluateSingleProblem,
+    handleEvaluateProblems,
+    extractScoreFromText
+  } = useEvaluationManager({
+    chat,
+    setChat,
+    chatHistory,
+    currentChatId,
+    setEvaluating,
+    setCurrentEvaluationScores,
+    setChatHistory,
+    // ✅ Rimuoviamo le metriche da qui
+  });
 
   // Stati locali NON gestiti dal manager
 
@@ -140,8 +128,24 @@ const deactivateLiveMode = () => {
     setIsLiveMode(false);
   }
 };
-  const chatScrollViewRef = useRef<ScrollView>(null);
+  // App.tsx
+    const chatScrollViewRef = useRef<ScrollView>(null);
 
+    // ✅ AGGIUNGI QUESTA FUNZIONE
+    const convertChatToTranscript = (chatMessages) => {
+      return chatMessages.map(msg => ({
+        role: msg.role === 'bot' ? 'medico' : 'paziente',
+        start: msg.start,
+        end: msg.end,
+        text: msg.message,
+      })).filter(msg => msg.text !== 'INIZIO_INTERVISTA_NASCOSTO');
+    };
+// ✅ AGGIUNGI QUESTO BLOCCO
+  // Questo "contenitore" ci permette di usare la funzione in modo sicuro
+  const updateTimestampRef = useRef(updateLastBotMessageTimestamp);
+  useEffect(() => {
+    updateTimestampRef.current = updateLastBotMessageTimestamp;
+  });
 useEffect(() => {
   // Invia il messaggio solo se NON siamo in pausa
   if (isLiveMode && !isListeningPaused && voiceManager.hasFinishedSpeaking && voiceManager.recognizedText) {
@@ -172,15 +176,29 @@ useEffect(() => {
 
 // 1. useEffect per IMPOSTARE i listener (CRASH-PROOF)
 // Questo si esegue solo una volta e non tenta mai di rimuovere i listener, evitando il bug.
+// 1. useEffect per IMPOSTARE i listener (CRASH-PROOF e con TIMESTAMP)
+// La versione finale che calcola i timestamp SENZA rompere nulla
 useEffect(() => {
-  const onStart = () => setIsBotSpeaking(true);
-  const onFinish = () => setIsBotSpeaking(false);
-  const onCancel = () => setIsBotSpeaking(false);
+  const onStart = () => {
+    setIsBotSpeaking(true);
+    // Usa la funzione che hai già importato per aggiornare l'inizio
+    updateLastBotMessageTimestamp('start');
+  };
+
+  const onFinish = () => {
+    setIsBotSpeaking(false);
+    // E fa lo stesso per la fine
+    updateLastBotMessageTimestamp('end');
+  };
+
+  const onCancel = () => {
+    setIsBotSpeaking(false);
+  };
 
   Tts.addEventListener('tts-start', onStart);
   Tts.addEventListener('tts-finish', onFinish);
   Tts.addEventListener('tts-cancel', onCancel);
-}, []); // L'array vuoto [] è fondamentale
+}, [updateLastBotMessageTimestamp]); // Aggiungi la dipendenza per sicurezza
 
 // 2. useEffect per GESTIRE il microfono in modo intelligente
 useEffect(() => {
@@ -202,24 +220,7 @@ useEffect(() => {
     voiceManager.startListening();
   }
 }, [isBotSpeaking, isLiveMode, isListeningPaused]); // Si attiva solo quando questi stati cambiano
-useEffect(() => {
-  const lastMessage = chat[chat.length - 1];
 
-  // Controlliamo solo se l'ultimo messaggio è del bot
-  if (lastMessage?.role === 'bot') {
-    // Se la voce è abilitata o siamo in live mode, il bot deve parlare
-    if (voiceEnabled || isLiveMode) {
-      // Come sicurezza, fermiamo qualsiasi parlato precedente
-      Tts.stop();
-      // Se per caso il microfono fosse attivo, lo fermiamo
-      if (voiceManager.isListening) {
-        voiceManager.stopListening();
-      }
-      // Ora facciamo parlare il bot con il nuovo messaggio
-      Tts.speak(lastMessage.message);
-    }
-  }
-}, [chat]); // <-- La dipendenza è solo 'chat', quindi si attiva UNA SOLA VOLTA per ogni nuovo messaggio
 
   const toggleVoice = () => {
     if (voiceEnabled) {
@@ -304,15 +305,30 @@ const handleStartInterviewAndChat = async (liveMode = false) => {
   uiActions.setFirstLoad(false);
   await startInterview();
 };
+
+const handleGenerateLiveReport = () => {
+  // ✅ 1. Calcola le metriche fresche
+  const transcript = convertChatToTranscript(chat);
+  const liveMetrics = TranscriptAnalytics.calculateAllMetrics(transcript);
+
+  // ✅ 2. Chiama la funzione di valutazione originale con le metriche
+  handleEvaluateProblems(liveMetrics);
+};
 const handleSelectProblemToEvaluate = (problem: any) => {
-  deactivateLiveMode();
-  handleEvaluateSingleProblem(problem);
+  // NON disattiviamo più la modalità live qui per non perdere i pulsanti
+
+  // ✅ 1. Calcola le metriche fresche dalla chat attuale
+  const transcript = convertChatToTranscript(chat);
+  const liveMetrics = TranscriptAnalytics.calculateAllMetrics(transcript);
+
+  // ✅ 2. Passa le metriche alla funzione di valutazione
+  handleEvaluateSingleProblem(problem, liveMetrics);
 };
 const handleEndLiveMode = () => {
   voiceManager.stopListening(); // Ferma il microfono
 };
 const handleOpenToolsMenu = () => {
-  deactivateLiveMode();
+  // ✅ Non disattiviamo più la modalità live
   uiActions.openToolsMenu();
 };
   const loadChat = (chatId: string) => {
@@ -473,7 +489,7 @@ const handleGoHome = () => {
           <ToolsMenuModal
             visible={uiState.isToolsMenuVisible}
             onClose={uiActions.closeToolsMenu}
-            onGenerateReport={handleEvaluateProblems}
+            onGenerateReport={handleGenerateLiveReport}
             onExportCharts={uiActions.openChartsModal}
             onExportChat={uiActions.openExportModal}
             onImportTranscript={handleImportTranscript}

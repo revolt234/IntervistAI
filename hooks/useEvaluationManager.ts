@@ -24,72 +24,75 @@ export const useEvaluationManager = ({
   setChatHistory, // <- serve per salvare e poi persistere
 }) => {
   // Helper note dinamiche per fenomeno
-  const getHintsForProblem = (problem) => {
-    let timeHint = '';
-    let logorreaHint = '';
-    let speechRateHint = '';
-  if (problem.fenomeno.toLowerCase().includes('discorso sotto pressione')) {
-    if (avgSpeechRate !== undefined && maxSpeechRate !== undefined) {
-      speechRateHint =
-        `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Discorso Sotto Pressione:** ` +
-        `DATI DEL PAZIENTE:` +
-        `Velocità media del parlato = ${avgSpeechRate.toFixed(2)} parole/s; ` +
-        `Picco di velocità = ${maxSpeechRate.toFixed(2)} parole/s. ` +
-        `Tu devi considerare che in media la velcità di conversazione si aggira intorno alle 130-150 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
-    }
-  }
-    if (problem.fenomeno.toLowerCase().includes('rallentato') && avgTimeResponse !== undefined) {
-      timeHint =
-        `**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Pensiero Rallentato: ` +
-        `tempo medio delle risposte del paziente calcolato con metadati = ${avgTimeResponse.toFixed(2)}s. ` +
-        `Se > 2 secondi rafforza la presenza della problematica.**\n`;
-    }
-
-    if (problem.fenomeno.toLowerCase().includes('logorrea')) {
-      if (avgResponseLength !== undefined && counterInterruption !== undefined) {
-        logorreaHint =
-          `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Logorrea:** ` +
-          `Lunghezza media risposte ${avgResponseLength.toFixed(2)} parole; ` +
-          `interrompe il medico nel ${(counterInterruption * 100).toFixed(1)}% dei casi. ` +
-          `Considera queste metriche nell'assegnazione del punteggio.\n\n`;
-      }
-    }
-   return { timeHint, logorreaHint, speechRateHint }; // Aggiungi speechRateHint
-  };
+  const getHintsForProblem = (problem, metrics) => { // ✅ Accetta 'metrics' come argomento
+     let timeHint = '';
+     let logorreaHint = '';
+     let speechRateHint = '';
+     if (problem.fenomeno.toLowerCase().includes('discorso sotto pressione')) {
+       // ✅ Usa le metriche dall'argomento
+       if (metrics.avgSpeechRate !== undefined && metrics.maxSpeechRate !== undefined) {
+         speechRateHint =
+           `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Discorso Sotto Pressione:** ` +
+           `DATI DEL PAZIENTE:` +
+           `Velocità media del parlato = ${metrics.avgSpeechRate.toFixed(2)} parole/s; ` +
+           `Picco di velocità = ${metrics.maxSpeechRate.toFixed(2)} parole/s. ` +
+           `Tu devi considerare che in media la velcità di conversazione si aggira intorno alle 130-150 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
+       }
+     }
+     if (problem.fenomeno.toLowerCase().includes('rallentato') && metrics.avgTimeResponse !== undefined) {
+       // ✅ Usa le metriche dall'argomento
+       timeHint =
+         `**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Pensiero Rallentato: ` +
+         `DATI DEL PAZIENTE:` +
+         `tempo medio delle risposte del paziente = ${metrics.avgTimeResponse.toFixed(2)}s. ` +
+         `Se > 2 secondi rafforza la presenza della problematica.**\n`;
+     }
+     if (problem.fenomeno.toLowerCase().includes('logorrea')) {
+       // ✅ Usa le metriche dall'argomento
+       if (metrics.avgResponseLength !== undefined && metrics.counterInterruption !== undefined) {
+         logorreaHint =
+           `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Logorrea:** ` +
+           `Lunghezza media risposte ${metrics.avgResponseLength.toFixed(2)} parole; ` +
+           `interrompe il medico nel ${(metrics.counterInterruption * 100).toFixed(1)}% dei casi. ` +
+           `Considera queste metriche nell'assegnazione del punteggio.\n\n`;
+       }
+     }
+    return { timeHint, logorreaHint, speechRateHint };
+   };
 
   // ------- Valutazione singolo fenomeno -------
-  const handleEvaluateSingleProblem = useCallback(async (selectedProblem) => {
+const handleEvaluateSingleProblem = useCallback(async (selectedProblem, liveMetrics = null) => {
     if (!selectedProblem || chat.length === 0) {
       Alert.alert('Attenzione', 'Seleziona un fenomeno da valutare');
       return;
     }
-
+const metrics = liveMetrics ?? { avgTimeResponse, avgResponseLength, counterInterruption, avgSpeechRate, maxSpeechRate };
     // Alert metriche dedicate
     if (selectedProblem.fenomeno.toLowerCase().includes('rallentato')) {
-      if (avgTimeResponse !== undefined) {
-        Alert.alert('⏱️ Metrica per Pensiero Rallentato', `Tempo medio risposte: ${avgTimeResponse.toFixed(2)}s`);
+      if (metrics.avgTimeResponse !== undefined) {
+        Alert.alert('⏱️ Metrica per Pensiero Rallentato', `Tempo medio risposte: ${metrics.avgTimeResponse.toFixed(2)}s`);
       } else {
         Alert.alert('⚠️ Informazione mancante', 'avgTimeResponse non disponibile.');
       }
     }
 if (selectedProblem.fenomeno.toLowerCase().includes('discorso sotto pressione')) {
   let msg = '';
-  msg += avgSpeechRate == null
+  msg += metrics.avgSpeechRate == null
     ? '⚠️ Velocità media parlato NON disponibile.\n'
-    : `⚡️ Velocità media parlato: ${avgSpeechRate.toFixed(2)} parole/s\n`;
-  msg += maxSpeechRate == null
+    : `⚡️ Velocità media parlato: ${metrics.avgSpeechRate.toFixed(2)} parole/s\n`;
+  msg += metrics.maxSpeechRate == null
     ? '⚠️ Picco velocità parlato NON disponibile.\n'
-    : `🚀 Picco velocità parlato: ${maxSpeechRate.toFixed(2)} parole/s\n`;
+    : `🚀 Picco velocità parlato: ${metrics.maxSpeechRate.toFixed(2)} parole/s\n`;
   Alert.alert('📊 Metriche per Discorso Sotto Pressione', msg.trim());
 }
     if (selectedProblem.fenomeno.toLowerCase().includes('logorrea')) {
       let msg = '';
-      msg += avgResponseLength == null
+      msg += metrics.avgResponseLength == null
         ? '⚠️ Lunghezza media risposte NON disponibile.\n'
-        : `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
-      msg += counterInterruption == null
+        : `🗣️ Lunghezza media risposte: ${metrics.avgResponseLength.toFixed(2)} parole\n`;
+      msg += metrics.counterInterruption == null
         ? '⚠️ Interruzioni paziente NON disponibili.\n'
-        : `🔁 Interruzioni paziente: ${(counterInterruption * 100).toFixed(1)}% delle domande\n`;
+        : `🔁 Interruzioni paziente: ${(metrics.counterInterruption * 100).toFixed(1)}% delle domande\n`;
       Alert.alert('📊 Metriche per Logorrea', msg.trim());
     }
 
@@ -107,7 +110,9 @@ if (selectedProblem.fenomeno.toLowerCase().includes('discorso sotto pressione'))
           : 'Nessun punteggio precedente disponibile per questo fenomeno.'
       );
 
-      const { timeHint, logorreaHint, speechRateHint } = getHintsForProblem(selectedProblem);
+// In handleEvaluateSingleProblem...
+// ✅ Passa l'oggetto 'metrics' alla funzione
+const { timeHint, logorreaHint, speechRateHint } = getHintsForProblem(selectedProblem, metrics);
 
       const prompt = `
 - Problematica: ${selectedProblem.fenomeno}
@@ -182,43 +187,36 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
     } finally {
       setEvaluating(false);
     }
-  }, [
-    chat,
-    chatHistory,
-    currentChatId,
-    avgTimeResponse,
-    avgResponseLength,
-    counterInterruption,
-    avgSpeechRate, // <-- AGGIUNGI
-    maxSpeechRate, // <-- AGGIUNGI
-    setEvaluating,
-    setCurrentEvaluationScores,
-    setChatHistory,
-  ]);
+  // Alla fine di handleEvaluateSingleProblem...
+    }, [
+      chat, chatHistory, currentChatId,
+      // ✅ Rimuovi le singole metriche perché sono già incluse nell'hook
+      setEvaluating, setCurrentEvaluationScores, setChatHistory,
+    ]);
 
   // ------- Valutazione completa (tutti i fenomeni) -------
-  const handleEvaluateProblems = useCallback(async () => {
+const handleEvaluateProblems = useCallback(async (liveMetrics = null) => { // ✅ Modifica la firma
     if (chat.length === 0) {
       Alert.alert('Attenzione', 'Non c’è alcuna conversazione da valutare');
       return;
     }
-
+ const metrics = liveMetrics ?? { avgTimeResponse, avgResponseLength, counterInterruption, avgSpeechRate, maxSpeechRate };
     setEvaluating(true);
 
     try {
       // Riepilogo metriche
       let generalInfo = 'Metriche generali disponibili per la valutazione:\n\n';
       let hasMetrics = false;
-      if (avgTimeResponse !== undefined) {
-        generalInfo += `⏱️ Tempo medio risposta: ${avgTimeResponse.toFixed(2)}s\n`;
+      if (metrics.avgTimeResponse !== undefined) {
+        generalInfo += `⏱️ Tempo medio risposta: ${metrics.avgTimeResponse.toFixed(2)}s\n`;
         hasMetrics = true;
       }
       if (avgResponseLength !== undefined) {
-        generalInfo += `🗣️ Lunghezza media risposte: ${avgResponseLength.toFixed(2)} parole\n`;
+        generalInfo += `🗣️ Lunghezza media risposte: ${metrics.avgResponseLength.toFixed(2)} parole\n`;
         hasMetrics = true;
       }
       if (counterInterruption !== undefined) {
-        generalInfo += `🔁 Tasso interruzioni: ${(counterInterruption * 100).toFixed(1)}%\n`;
+        generalInfo += `🔁 Tasso interruzioni: ${(metrics.counterInterruption * 100).toFixed(1)}%\n`;
         hasMetrics = true;
       }
       if (hasMetrics) Alert.alert('📊 Info Generali', generalInfo.trim());
@@ -229,7 +227,7 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
       const newCurrentScores: { [fenomeno: string]: number } = {};
 
       for (const problem of problemDetails) {
-        const { timeHint, logorreaHint, speechRateHint } = getHintsForProblem(problem);
+         const { timeHint, logorreaHint, speechRateHint } = getHintsForProblem(problem, metrics);
 
         const prompt = `
 - Problematica: ${problem.fenomeno}
@@ -301,17 +299,9 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
       setEvaluating(false);
     }
  }, [
-   chat,
-   chatHistory,
-   currentChatId,
-   avgTimeResponse,
-   avgResponseLength,
-   counterInterruption,
-   avgSpeechRate, // <-- AGGIUNGI
-   maxSpeechRate, // <-- AGGIUNGI
-   setEvaluating,
-   setCurrentEvaluationScores,
-   setChatHistory,
+   chat, chatHistory, currentChatId,
+   // ✅ Rimuovi le singole metriche
+   setEvaluating, setCurrentEvaluationScores, setChatHistory,
  ]);
 
   // Estrazione punteggio (accetta "Assegnato" o "assegnato")

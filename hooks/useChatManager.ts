@@ -204,6 +204,7 @@ const updateLastBotMessageTimestamp = useCallback((type: 'start' | 'end') => {
            };
             setChat(prev => [...prev, botMessage]);
             setInitialPromptSent(true);
+            Tts.speak(text);
           } catch (err) {
             console.error('Errore durante la richiesta a Gemini:', err);
             const errorStartTime = Date.now() / 1000;
@@ -275,6 +276,7 @@ const updateLastBotMessageTimestamp = useCallback((type: 'start' | 'end') => {
             };
             setChat(prev => [...prev, botMessage]);
             setInitialPromptSent(true);
+            Tts.speak(text);
           } catch (err) {
             console.error('Errore durante la richiesta:', err);
             const errorStartTime = Date.now() / 1000;
