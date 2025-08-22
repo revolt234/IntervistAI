@@ -1,6 +1,7 @@
-// useVoiceRecognition.ts
+// useVoiceRecognition.ts (aggiornato per react-native-voice2text)
+
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import Voice2Text from 'react-native-voice2text';
 
 export const useVoiceRecognition = () => {
   const [isListening, setIsListening] = useState(false);
@@ -9,34 +10,48 @@ export const useVoiceRecognition = () => {
   const [error, setError] = useState('');
   const [speechStartTime, setSpeechStartTime] = useState(0);
   const [speechEndTime, setSpeechEndTime] = useState(0);
+
+  // 1. RIPRISTINATA LA TUA LOGICA ORIGINALE DEL setTimeout
+  // Dato che la libreria non ha un evento onEnd, questo è il modo corretto
+  // per sapere quando l'utente ha finito di parlare.
   const speechTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const onSpeechResults = useCallback((e: SpeechResultsEvent) => {
-    const text = e.value?.[0] || '';
+  // onResults: chiamato con il testo riconosciuto
+  const onResultsHandler = useCallback((result: { text: string }) => {
+    const text = result.text || '';
     setRecognizedText(text);
 
-    // ✅ MODIFICA APPLICATA QUI
-    // Avvia il timer per la fine del parlato solo se l'utente ha detto almeno una parola.
     if (text.trim().length > 0) {
       if (speechTimeout.current) {
         clearTimeout(speechTimeout.current);
       }
       speechTimeout.current = setTimeout(() => {
-        setSpeechEndTime((Date.now() / 1000) - 2);
+        setSpeechEndTime(Date.now() / 1000);
         setHasFinishedSpeaking(true);
-      }, 2000);
+        setIsListening(false); // Smettiamo di ascoltare dopo il timeout
+      }, 2000); // 2 secondi di silenzio per considerare finita la frase
     }
   }, []);
 
-  const onSpeechError = useCallback((e: SpeechErrorEvent) => {
-    setError(JSON.stringify(e.error));
+  // onError: chiamato in caso di errore
+  const onErrorHandler = useCallback((e: { message: string }) => {
+    setError(e.message || 'Errore sconosciuto');
     setIsListening(false);
   }, []);
 
-  const onSpeechStart = useCallback(() => {
-    setSpeechStartTime(Date.now() / 1000);
-  }, []);
+  // useEffect: registra e pulisce gli eventi
+  useEffect(() => {
+    // 2. EVENTI CORRETTI: Registriamo solo gli eventi che la libreria fornisce.
+    const resultsSubscription = Voice2Text.onResults(onResultsHandler);
+    const errorSubscription = Voice2Text.onError(onErrorHandler);
 
+    return () => {
+      resultsSubscription.remove();
+      errorSubscription.remove();
+    };
+  }, [onResultsHandler, onErrorHandler]);
+
+  // Funzione per resettare lo stato
   const reset = () => {
     setIsListening(false);
     setRecognizedText('');
@@ -44,43 +59,46 @@ export const useVoiceRecognition = () => {
     setError('');
     setSpeechStartTime(0);
     setSpeechEndTime(0);
+    if (speechTimeout.current) {
+      clearTimeout(speechTimeout.current);
+    }
   };
 
+  // Funzione per avviare l'ascolto
   const startListening = async () => {
     reset();
-    setIsListening(true);
     try {
-      await Voice.start('it-IT');
-    } catch (e) {
+      // 3. CONTROLLO PERMESSI E METODO CORRETTO
+      const granted = await Voice2Text.checkPermissions();
+      if (granted) {
+        await Voice2Text.startListening('it-IT');
+        // 4. GESTIONE MANUALE DELLO STATO "isListening"
+        // Poiché non c'è onStart, lo impostiamo noi qui.
+        setIsListening(true);
+        setSpeechStartTime(Date.now() / 1000);
+      } else {
+        setError('Permesso per il microfono negato.');
+      }
+    } catch (e: any) {
       console.error('Errore startListening:', e);
       setError(e.message);
       setIsListening(false);
     }
   };
 
+  // Funzione per fermare l'ascolto
   const stopListening = async () => {
     try {
-      await Voice.stop();
-    } catch (e) {
+      // 5. METODO CORRETTO
+      await Voice2Text.stopListening();
+    } catch (e: any) {
       console.error('Errore stopListening:', e);
     } finally {
       setIsListening(false);
     }
   };
 
-  useEffect(() => {
-    Voice.onSpeechStart = onSpeechStart;
-    Voice.onSpeechError = onSpeechError;
-    Voice.onSpeechResults = onSpeechResults;
-
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-      if (speechTimeout.current) {
-        clearTimeout(speechTimeout.current);
-      }
-    };
-  }, [onSpeechStart, onSpeechResults, onSpeechError]);
-
+  // Valori e funzioni restituiti dall'hook
   return {
     isListening,
     recognizedText,

@@ -1,7 +1,7 @@
 package com.appreact
 
 import android.app.Application
-import com.wenkesj.voice.VoicePackage // <-- AGGIUNGI QUESTA RIGA
+
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
