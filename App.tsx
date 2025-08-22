@@ -671,14 +671,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#ccc',
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  closeButton: {
-    fontSize: 24,
-    padding: 5,
-  },
+//...
+modalTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#000', // ✅ Aggiunto
+},
+closeButton: {
+  fontSize: 24,
+  padding: 5,
+  color: '#000', // ✅ Aggiunto
+},
+//...
   modalContent: {
     flex: 1,
     padding: 10,

@@ -1,5 +1,5 @@
 // components/ChartsReport.tsx
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import {
   Svg,
@@ -20,7 +20,6 @@ type ChartsReportProps = {
 
 const CHART_WIDTH = 320;
 const CHART_HEIGHT = 200;
-// ✅ margini simmetrici per centrare meglio il grafico
 const MARGIN = { top: 16, right: 24, bottom: 32, left: 24 };
 const PLOT_W = CHART_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_H = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
@@ -32,7 +31,7 @@ function toNiceDateLabel(d: Date) {
 }
 
 function buildPath(points: { x: number; y: number }[]) {
-  if (points.length === 0) return '';
+  if (points.length < 2) return '';
   const [first, ...rest] = points;
   const cmds = [`M ${first.x} ${first.y}`, ...rest.map(p => `L ${p.x} ${p.y}`)];
   return cmds.join(' ');
@@ -48,16 +47,17 @@ const ChartsReport: React.FC<ChartsReportProps> = ({ problems, evaluationLog }) 
           .slice()
           .sort((a, b) => a.timestamp - b.timestamp);
 
-        const { xMin, xMax } = useMemo(() => {
-          if (series.length === 0) {
-            const now = Date.now();
-            return { xMin: now - 86400000, xMax: now }; // 1 giorno dummy
-          }
-          return {
-            xMin: series[0].timestamp,
-            xMax: series[series.length - 1].timestamp || series[0].timestamp + 1,
-          };
-        }, [series]);
+        // ✅ CORREZIONE: Calcolo diretto dei valori min/max senza usare l'hook useMemo
+        let xMin, xMax;
+        if (series.length === 0) {
+          const now = Date.now();
+          xMin = now - 86400000; // 1 giorno fa
+          xMax = now;
+        } else {
+          xMin = series[0].timestamp;
+          // Assicura che xMax sia sempre maggiore di xMin se c'è un solo punto
+          xMax = series.length > 1 ? series[series.length - 1].timestamp : series[0].timestamp + 1;
+        }
 
         const yMin = 0;
         const yMax = 4;
@@ -78,9 +78,9 @@ const ChartsReport: React.FC<ChartsReportProps> = ({ problems, evaluationLog }) 
         const pathD = buildPath(points);
         const yTicks = [0, 1, 2, 3, 4];
 
-        const xTickCount = Math.min(4, Math.max(1, series.length));
+        const xTickCount = Math.min(4, Math.max(2, series.length));
         const xTickIdx = Array.from({ length: xTickCount }, (_, i) =>
-          Math.round((i / (xTickCount - 1 || 1)) * (series.length - 1))
+          Math.floor((i / (xTickCount - 1)) * (series.length - 1))
         );
         const xTicks =
           series.length > 0
@@ -100,120 +100,41 @@ const ChartsReport: React.FC<ChartsReportProps> = ({ problems, evaluationLog }) 
               {series.length ? `Valutazioni: ${series.length} (0–4)` : 'Nessuna valutazione registrata'}
             </Text>
 
-            <Svg
-              width={CHART_WIDTH}
-              height={CHART_HEIGHT}
-              // ✅ centra il blocco del grafico dentro la card
-              style={{ alignSelf: 'center' }}
-            >
-              {/* sfondo area chart */}
-              <Rect
-                x={MARGIN.left}
-                y={MARGIN.top}
-                width={PLOT_W}
-                height={PLOT_H}
-                fill="#ffffff"
-              />
-
-              {/* griglia orizzontale + asse Y */}
+            <Svg width={CHART_WIDTH} height={CHART_HEIGHT} style={{ alignSelf: 'center' }}>
+              <Rect x={MARGIN.left} y={MARGIN.top} width={PLOT_W} height={PLOT_H} fill="#ffffff" />
               <G>
-                {/* asse Y */}
-                <SvgLine
-                  x1={MARGIN.left}
-                  y1={MARGIN.top}
-                  x2={MARGIN.left}
-                  y2={MARGIN.top + PLOT_H}
-                  stroke="#333"
-                  strokeWidth={1}
-                />
-                {/* griglia + tick Y */}
+                <SvgLine x1={MARGIN.left} y1={MARGIN.top} x2={MARGIN.left} y2={MARGIN.top + PLOT_H} stroke="#333" strokeWidth={1} />
                 {yTicks.map((t) => {
                   const y = yScale(t);
                   return (
                     <G key={`y-${t}`}>
-                      <SvgLine
-                        x1={MARGIN.left}
-                        y1={y}
-                        x2={MARGIN.left + PLOT_W}
-                        y2={y}
-                        stroke="#eee"
-                        strokeWidth={1}
-                      />
-                      <SvgText
-                        x={MARGIN.left - 6}
-                        y={y + 4}
-                        fontSize="10"
-                        fill="#333"
-                        textAnchor="end"
-                      >
+                      <SvgLine x1={MARGIN.left} y1={y} x2={MARGIN.left + PLOT_W} y2={y} stroke="#eee" strokeWidth={1} />
+                      <SvgText x={MARGIN.left - 6} y={y + 4} fontSize="10" fill="#333" textAnchor="end">
                         {t}
                       </SvgText>
                     </G>
                   );
                 })}
               </G>
-
-              {/* asse X */}
-              <SvgLine
-                x1={MARGIN.left}
-                y1={MARGIN.top + PLOT_H}
-                x2={MARGIN.left + PLOT_W}
-                y2={MARGIN.top + PLOT_H}
-                stroke="#333"
-                strokeWidth={1}
-              />
-              {/* tick X */}
+              <SvgLine x1={MARGIN.left} y1={MARGIN.top + PLOT_H} x2={MARGIN.left + PLOT_W} y2={MARGIN.top + PLOT_H} stroke="#333" strokeWidth={1} />
               {xTicks.map((tick, i) => (
                 <G key={`x-${i}`}>
-                  <SvgLine
-                    x1={tick.x}
-                    y1={MARGIN.top + PLOT_H}
-                    x2={tick.x}
-                    y2={MARGIN.top + PLOT_H + 4}
-                    stroke="#333"
-                    strokeWidth={1}
-                  />
-                  <SvgText
-                    x={tick.x}
-                    y={MARGIN.top + PLOT_H + 16}
-                    fontSize="10"
-                    fill="#333"
-                    textAnchor="middle"
-                  >
+                  <SvgLine x1={tick.x} y1={MARGIN.top + PLOT_H} x2={tick.x} y2={MARGIN.top + PLOT_H + 4} stroke="#333" strokeWidth={1} />
+                  <SvgText x={tick.x} y={MARGIN.top + PLOT_H + 16} fontSize="10" fill="#333" textAnchor="middle">
                     {tick.label}
                   </SvgText>
                 </G>
               ))}
-
-              {/* linea dati */}
-              {points.length >= 2 && (
-                <Path
-                  d={pathD}
-                  stroke="#1976D2"
-                  strokeWidth={2}
-                  fill="none"
-                />
-              )}
-
-              {/* punti */}
+              <Path d={pathD} stroke="#1976D2" strokeWidth={2} fill="none" />
               {points.map((pt, idx) => (
                 <Circle key={`pt-${idx}`} cx={pt.x} cy={pt.y} r={3} fill="#1976D2" />
               ))}
-
-              {/* testo "No data" dentro al grafico */}
               {points.length === 0 && (
-                <SvgText
-                  x={MARGIN.left + PLOT_W / 2}
-                  y={MARGIN.top + PLOT_H / 2}
-                  fontSize="12"
-                  fill="#999"
-                  textAnchor="middle"
-                >
+                <SvgText x={MARGIN.left + PLOT_W / 2} y={MARGIN.top + PLOT_H / 2} fontSize="12" fill="#999" textAnchor="middle">
                   Nessun dato
                 </SvgText>
               )}
             </Svg>
-
             {series.length >= 2 && last && prev && (
               <Text style={styles.delta}>
                 Ultimo: {last.score} • Precedente: {prev.score} • Δ {last.score - prev.score}
@@ -228,7 +149,12 @@ const ChartsReport: React.FC<ChartsReportProps> = ({ problems, evaluationLog }) 
 
 const styles = StyleSheet.create({
   container: { padding: 12, backgroundColor: '#fff' },
-  title: { fontWeight: 'bold', fontSize: 18, marginBottom: 10 },
+  title: {
+    fontWeight: 'bold',
+    fontSize: 18,
+    marginBottom: 10,
+    color: '#000', // ✅ Aggiunto per rendere il titolo nero
+  },
   card: {
     borderWidth: 1,
     borderColor: '#eee',
@@ -237,7 +163,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: '#fff',
   },
-  fenomeno: { fontWeight: 'bold', fontSize: 16 },
+  fenomeno: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    color: '#000', // ✅ Aggiunto per rendere il titolo del grafico nero
+  },
   desc: { color: '#666', marginBottom: 6 },
   delta: { marginTop: 6, fontStyle: 'italic', color: '#333' },
 });

@@ -4,6 +4,7 @@ import { Platform, Alert } from 'react-native';
 import RNFS from 'react-native-fs';
 import { pick } from '@react-native-documents/picker';
 import TranscriptAnalytics from './TranscriptAnalytics';
+
 class JsonFileReader {
   static async getRandomMedicalQuestions(): Promise<string[]> {
     try {
@@ -34,57 +35,57 @@ class JsonFileReader {
     }
   }
 
-  // ✅ AGGIORNATA: restituisce anche avgResponseLength e counterInterruption
+  static async importTranscriptFromFile(): Promise<{
+    transcript: any[],
+    avgTimeResponse: number,
+    avgResponseLength: number,
+    counterInterruption: number,
+    avgSpeechRate: number,
+    maxSpeechRate: number
+  } | null> {
+    try {
+      if (Platform.OS !== 'android') {
+        Alert.alert('Solo Android', 'Questa funzione è disponibile solo su Android.');
+        return null;
+      }
 
- static async importTranscriptFromFile(): Promise<{
-   transcript: any[],
-   avgTimeResponse: number,
-   avgResponseLength: number,
-   counterInterruption: number,
-   avgSpeechRate: number,
-   maxSpeechRate: number
- } | null> {
-   try {
-     if (Platform.OS !== 'android') {
-       Alert.alert('Solo Android', 'Questa funzione è disponibile solo su Android.');
-       return null;
-     }
+      const [file] = await pick({ type: 'application/json' });
+      if (!file) return null;
 
-     const [file] = await pick({ type: 'application/json' });
-     if (!file) return null;
+      // 1. Leggiamo il file normalmente in UTF-8
+      const content = await RNFS.readFile(file.uri, 'utf8');
 
-     const content = await RNFS.readFile(file.uri, 'utf8');
-     const parsed = JSON.parse(content);
+      // 2. Facciamo il parse del contenuto
+      const parsed = JSON.parse(content);
 
-     let transcript = Array.isArray(parsed)
-       ? parsed
-       : Array.isArray(parsed.transcription)
-         ? parsed.transcription
-         : null;
+      // 3. Manteniamo la logica flessibile per i due formati JSON
+      let transcript = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed.transcription)
+          ? parsed.transcription
+          : null;
 
-     if (!transcript) {
-       Alert.alert('Errore', 'Formato del file JSON non valido.');
-       return null;
-     }
+      if (!transcript) {
+        Alert.alert('Errore', 'Formato del file JSON non valido. Deve essere un array o un oggetto con una chiave "transcription".');
+        return null;
+      }
 
-     // 1. Filtra i turni vuoti
-     const cleanTranscript = transcript.filter(turn => turn.text && turn.text.trim() !== '');
+      // 4. Calcoliamo le metriche
+      const cleanTranscript = transcript.filter(turn => turn.text && turn.text.trim() !== '');
+      const metrics = TranscriptAnalytics.calculateAllMetrics(cleanTranscript);
 
-     // 2. Calcola tutte le metriche con una sola chiamata!
-     const metrics = TranscriptAnalytics.calculateAllMetrics(cleanTranscript);
+      return {
+        transcript: cleanTranscript,
+        ...metrics
+      };
 
-     // 3. Restituisci la trascrizione pulita e le metriche calcolate
-     return {
-       transcript: cleanTranscript,
-       ...metrics
-     };
-
-   } catch (error) {
-     console.error('Errore durante l\'importazione:', error);
-     Alert.alert('Errore', 'Impossibile importare il file selezionato.');
-     return null;
-   }
- }
+    } catch (error) {
+      // 5. La gestione errori ora catturerà sia errori di lettura che di parsing (es. file non JSON)
+      console.error('Errore durante l\'importazione:', error);
+      Alert.alert('Errore', `Impossibile importare il file selezionato.\n Dettagli: ${error.message}`);
+      return null;
+    }
+  }
 
   static async getProblemDetails(): Promise<any[]> {
     try {
@@ -112,7 +113,7 @@ class JsonFileReader {
     }
   }
 
-  // 🔧 Private helper
+  // --- Funzioni private helper ---
   private static async readAssetFile(path: string): Promise<string> {
     return await RNFS.readFileAssets(path, 'utf8');
   }

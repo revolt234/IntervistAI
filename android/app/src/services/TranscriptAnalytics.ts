@@ -19,7 +19,7 @@ class TranscriptAnalytics {
     const totalMedicoTurns = transcript.filter(t => t.role === 'medico').length;
 
     const avgTimeResponse = this.calculateAvgTimeResponse(transcript);
-    const avgResponseLength = this.calculateAvgResponseLength(patientTurns);
+    const avgResponseLength = this.calculateAvgResponseLength(transcript); // Usa l'intera trascrizione
     const interruptionRatio = this.calculateInterruptionRatio(transcript, totalMedicoTurns);
     const { avg, max } = this.calculateSpeechRates(patientTurns);
 
@@ -34,6 +34,9 @@ class TranscriptAnalytics {
 
   // --- Metodi privati per i singoli calcoli ---
 
+  /**
+   * Calcola il tempo medio di reazione del paziente dopo che il medico ha parlato.
+   */
   private static calculateAvgTimeResponse(transcript: any[]): number {
     const delays: number[] = [];
     let lastMedicoEnd: number | null = null;
@@ -52,17 +55,41 @@ class TranscriptAnalytics {
       : 0;
   }
 
-  private static calculateAvgResponseLength(patientTurns: any[]): number {
-    if (patientTurns.length === 0) return 0;
+  /**
+   * Calcola la lunghezza media dei blocchi di risposta del paziente,
+   * raggruppando i turni consecutivi.
+   */
+  private static calculateAvgResponseLength(transcript: any[]): number {
+    const responseBlockLengths: number[] = [];
+    let currentBlockWords = 0;
 
-    const totalWords = patientTurns
-      .map(t => t.text.trim().split(/\s+/).length)
-      .reduce((a, b) => a + b, 0);
+    for (let i = 0; i < transcript.length; i++) {
+      const turn = transcript[i];
 
-    return totalWords / patientTurns.length;
+      if (turn.role === 'paziente') {
+        // Se il paziente parla, accumuliamo le parole
+        currentBlockWords += turn.text.trim().split(/\s+/).length;
+      }
+
+      // Un "blocco di risposta" del paziente termina se:
+      // 1. Il medico sta per parlare.
+      // 2. La trascrizione è finita.
+      if (currentBlockWords > 0 && (turn.role === 'medico' || i === transcript.length - 1)) {
+        responseBlockLengths.push(currentBlockWords);
+        currentBlockWords = 0; // Azzeriamo per il prossimo blocco
+      }
+    }
+
+    if (responseBlockLengths.length === 0) return 0;
+
+    // Calcoliamo la media sulla base dei blocchi raggruppati
+    return responseBlockLengths.reduce((a, b) => a + b, 0) / responseBlockLengths.length;
   }
 
-  // ✅ METODO AGGIORNATO CON FILTRO PER VALORI ANOMALI
+  /**
+   * Calcola la velocità media e massima del parlato del paziente,
+   * filtrando valori anomali.
+   */
   private static calculateSpeechRates(patientTurns: any[]): { avg: number; max: number } {
     if (patientTurns.length === 0) return { avg: 0, max: 0 };
 
@@ -73,18 +100,19 @@ class TranscriptAnalytics {
       return words / duration;
     }).filter(rate => rate > 0);
 
-    // NUOVO: Filtriamo i valori anomali che superano la nostra soglia realistica
     const filteredRates = rates.filter(rate => rate <= this.MAX_REALISTIC_SPEECH_RATE);
 
     if (filteredRates.length === 0) return { avg: 0, max: 0 };
 
-    // Usiamo l'array filtrato per i calcoli finali
     const avg = filteredRates.reduce((a, b) => a + b, 0) / filteredRates.length;
     const max = Math.max(...filteredRates);
 
     return { avg, max };
   }
 
+  /**
+   * Calcola il rapporto di interruzioni da parte del paziente.
+   */
   private static calculateInterruptionRatio(transcript: any[], totalMedicoTurns: number): number {
     if (totalMedicoTurns === 0) return 0;
 
