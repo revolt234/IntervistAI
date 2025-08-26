@@ -52,8 +52,8 @@ export const useEvaluationManager = ({
        if (metrics.avgResponseLength !== undefined && metrics.counterInterruption !== undefined) {
          logorreaHint =
            `\n**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Logorrea:** ` +
+                      `DATI DEL PAZIENTE:` +
            `Lunghezza media risposte= ${metrics.avgResponseLength.toFixed(2)} parole; ` +
-           `DATI DEL PAZIENTE:` +
            `interrompe il medico nel= ${(metrics.counterInterruption * 100).toFixed(1)}% dei casi. ` +
            `Considera queste metriche nell'assegnazione del punteggio.\n\n`;
        }

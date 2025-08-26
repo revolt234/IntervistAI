@@ -302,8 +302,9 @@ const handleStartInterviewAndChat = async (liveMode = false) => {
     // Resettiamo il flag ogni volta che iniziamo una nuova sessione live
     hasLiveConversationStarted.current = false;
   }
-  uiActions.setFirstLoad(false);
-  await startInterview();
+   uiActions.setFirstLoad(false);
+   // ✅ Passa 'true' se la voce è attiva o se è live mode
+   await startInterview(voiceEnabled || liveMode);
 };
 
 const handleGenerateLiveReport = () => {
@@ -454,7 +455,8 @@ const handleGoHome = () => {
                          <ChatInput
                            input={input}
                            onChangeInput={setInput}
-                           onSend={sendMessage}
+                           // ✅ Passa una funzione che chiama sendMessage con lo stato della voce
+                           onSend={() => sendMessage(voiceEnabled)}
                            loading={loading}
                            evaluating={evaluating}
                          />
