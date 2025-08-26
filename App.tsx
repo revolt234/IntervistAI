@@ -153,8 +153,8 @@ useEffect(() => {
     // ✅ AGGIUNGI QUESTA RIGA PER DISATTIVARE SUBITO IL MICROFONO
     voiceManager.stopListening();
 
-    sendVoiceMessage(voiceManager.recognizedText, voiceManager.speechStartTime, voiceManager.speechEndTime);
-    voiceManager.resetFinishedSpeaking();
+   sendVoiceMessage(voiceManager.recognizedText, voiceManager.speechStartTime, voiceManager.speechEndTime);
+       voiceManager.resetFinishedSpeaking();
   }
 }, [voiceManager.hasFinishedSpeaking, isListeningPaused]);
 
@@ -303,8 +303,7 @@ const handleStartInterviewAndChat = async (liveMode = false) => {
     hasLiveConversationStarted.current = false;
   }
    uiActions.setFirstLoad(false);
-   // ✅ Passa 'true' se la voce è attiva o se è live mode
-   await startInterview(voiceEnabled || liveMode);
+     await startInterview(); // <-- Non passa alcun parametro
 };
 
 const handleGenerateLiveReport = () => {
@@ -455,8 +454,7 @@ const handleGoHome = () => {
                          <ChatInput
                            input={input}
                            onChangeInput={setInput}
-                           // ✅ Passa una funzione che chiama sendMessage con lo stato della voce
-                           onSend={() => sendMessage(voiceEnabled)}
+                           onSend={sendMessage} // <-- Passa la funzione direttamente
                            loading={loading}
                            evaluating={evaluating}
                          />
