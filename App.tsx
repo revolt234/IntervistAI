@@ -435,7 +435,7 @@ const handleGoHome = () => {
               evaluating={evaluating}
               problemOptions={problemOptions}
               onEvaluateSingleProblem={handleSelectProblemToEvaluate}
-              disabled={isLiveMode}
+
             />
 
             {isLiveMode && (
