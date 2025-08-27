@@ -1,5 +1,3 @@
-// useVoiceRecognition.ts (aggiornato per react-native-voice2text)
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Voice2Text from 'react-native-voice2text';
 
@@ -11,12 +9,8 @@ export const useVoiceRecognition = () => {
   const [speechStartTime, setSpeechStartTime] = useState(0);
   const [speechEndTime, setSpeechEndTime] = useState(0);
 
-  // 1. RIPRISTINATA LA TUA LOGICA ORIGINALE DEL setTimeout
-  // Dato che la libreria non ha un evento onEnd, questo è il modo corretto
-  // per sapere quando l'utente ha finito di parlare.
   const speechTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // onResults: chiamato con il testo riconosciuto
   const onResultsHandler = useCallback((result: { text: string }) => {
     const text = result.text || '';
     setRecognizedText(text);
@@ -28,30 +22,34 @@ export const useVoiceRecognition = () => {
       speechTimeout.current = setTimeout(() => {
         setSpeechEndTime(Date.now() / 1000);
         setHasFinishedSpeaking(true);
-        setIsListening(false); // Smettiamo di ascoltare dopo il timeout
-      }, 2000); // 2 secondi di silenzio per considerare finita la frase
+        setIsListening(false);
+      }, 2000);
     }
   }, []);
 
-  // onError: chiamato in caso di errore
-  const onErrorHandler = useCallback((e: { message: string }) => {
-    setError(e.message || 'Errore sconosciuto');
+  // ✅ GESTORE ERRORI "INTELLIGENTE"
+  const onErrorHandler = useCallback((e: { message: string; code?: string }) => {
+    const errorMessage = e.message || 'Errore sconosciuto';
+    setError(errorMessage);
     setIsListening(false);
+
+    // Se l'errore è dovuto al silenzio (es. "No match"),
+    // lo trattiamo come un turno di parola "vuoto" e finito.
+    if (errorMessage.includes('No match') || errorMessage.includes('No speech input')) {
+      setRecognizedText('');
+      setHasFinishedSpeaking(true); // Questo attiva la logica del bot in App.tsx
+    }
   }, []);
 
-  // useEffect: registra e pulisce gli eventi
   useEffect(() => {
-    // 2. EVENTI CORRETTI: Registriamo solo gli eventi che la libreria fornisce.
-    const resultsSubscription = Voice2Text.onResults(onResultsHandler);
-    const errorSubscription = Voice2Text.onError(onErrorHandler);
+    Voice2Text.onResults(onResultsHandler);
+    Voice2Text.onError(onErrorHandler);
 
     return () => {
-      resultsSubscription.remove();
-      errorSubscription.remove();
+      Voice2Text.destroy();
     };
   }, [onResultsHandler, onErrorHandler]);
 
-  // Funzione per resettare lo stato
   const reset = () => {
     setIsListening(false);
     setRecognizedText('');
@@ -64,16 +62,12 @@ export const useVoiceRecognition = () => {
     }
   };
 
-  // Funzione per avviare l'ascolto
   const startListening = async () => {
     reset();
     try {
-      // 3. CONTROLLO PERMESSI E METODO CORRETTO
       const granted = await Voice2Text.checkPermissions();
       if (granted) {
         await Voice2Text.startListening('it-IT');
-        // 4. GESTIONE MANUALE DELLO STATO "isListening"
-        // Poiché non c'è onStart, lo impostiamo noi qui.
         setIsListening(true);
         setSpeechStartTime(Date.now() / 1000);
       } else {
@@ -86,10 +80,8 @@ export const useVoiceRecognition = () => {
     }
   };
 
-  // Funzione per fermare l'ascolto
   const stopListening = async () => {
     try {
-      // 5. METODO CORRETTO
       await Voice2Text.stopListening();
     } catch (e: any) {
       console.error('Errore stopListening:', e);
@@ -98,7 +90,6 @@ export const useVoiceRecognition = () => {
     }
   };
 
-  // Valori e funzioni restituiti dall'hook
   return {
     isListening,
     recognizedText,
