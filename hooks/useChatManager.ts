@@ -23,8 +23,13 @@ export interface Chat {
   evaluationScores: { [fenomeno: string]: number };
   evaluationLog?: { [fenomeno: string]: Array<{ score: number; timestamp: number }> };
 }
+// Aggiungiamo un'interfaccia per definire i tipi dei parametri
+interface ChatManagerProps {
+  isLiveMode: boolean;
+  voiceEnabled: boolean;
+}
 
-export const useChatManager = () => {
+export const useChatManager = ({ isLiveMode, voiceEnabled }: ChatManagerProps) => {
   const [chat, setChat] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [questions, setQuestions] = useState<string[]>([]);
@@ -203,10 +208,17 @@ export const useChatManager = () => {
         start: 0,
         end: 0,
       };
-      setChat(prev => [...prev, botMessage]);
-      setInitialPromptSent(true);
-      Tts.speak(text);
-    } catch (err) {
+     //...
+           setChat(prev => [...prev, botMessage]);
+           setInitialPromptSent(true);
+
+           // ✅ NUOVA LOGICA: Parla solo se è live o se la voce è attiva
+           const shouldSpeak = isLiveMode || voiceEnabled;
+           if (shouldSpeak) {
+             Tts.speak(text);
+           }
+         } catch (err) {
+     //...
       console.error('Errore durante la richiesta a Gemini:', err);
       const errorStartTime = Date.now() / 1000;
       setChat(prev => [...prev, { role: 'bot', message: 'Errore durante la richiesta.', start: errorStartTime, end: Date.now() / 1000 }]);
@@ -256,7 +268,7 @@ export const useChatManager = () => {
     }
   };
 
-  const startInterview = async () => {
+  const startInterview = async (isStartingLive: boolean) => { // ✅ Accetta un parametro
     setLoading(true);
     setHasAskedForNameAndBirth(true);
     try {
@@ -275,10 +287,15 @@ export const useChatManager = () => {
         start: 0,
         end: 0,
       };
-      setChat(prev => [...prev, botMessage]);
-      setInitialPromptSent(true);
-      Tts.speak(text);
-    } catch (err) {
+     setChat(prev => [...prev, botMessage]);
+     setInitialPromptSent(true);
+
+     // ✅ APPLICA LA STESSA LOGICA ANCHE QUI
+     const shouldSpeak = isStartingLive || voiceEnabled;
+     if (shouldSpeak) {
+         Tts.speak(text);
+     }
+     } catch (err) {
       console.error('Errore durante la richiesta:', err);
       const errorStartTime = Date.now() / 1000;
       setChat([{ role: 'bot', message: 'Errore durante la richiesta.', start: errorStartTime, end: Date.now() / 1000 }]);

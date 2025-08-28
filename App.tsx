@@ -60,6 +60,13 @@ interface Chat {
 }
 
 export default function App() {
+    const { uiState, uiActions } = useUIManager();
+      const [voiceEnabled, setVoiceEnabled] = useState(false);
+    const [isLiveMode, setIsLiveMode] = useState(false); // <-- AGGIUNGI SE MANCA
+    const [hasConcludedInterview, setHasConcludedInterview] = useState(false);
+    const [isBotSpeaking, setIsBotSpeaking] = useState(false);
+      const [problemOptions, setProblemOptions] = useState<any[]>([]);
+      const [interviewTrigger, setInterviewTrigger] = useState<'live' | 'text' | null>(null);
   const {
     chat, setChat,
     input, setInput,
@@ -78,7 +85,7 @@ export default function App() {
     startInterview,
    saveChat,
       updateLastBotMessageTimestamp, // ✅ Recupera la nuova funzione
-    } = useChatManager();
+   } = useChatManager({ isLiveMode, voiceEnabled });
 
   const { exporting, exportChatToFile } = useExportManager();
   const voiceManager = useVoiceRecognition(); // <-- AGGIUNGI QUESTA RIGA
@@ -108,12 +115,7 @@ export default function App() {
 
   // Stati locali NON gestiti dal manager
 
-const { uiState, uiActions } = useUIManager();
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-const [isLiveMode, setIsLiveMode] = useState(false); // <-- AGGIUNGI SE MANCA
-const [hasConcludedInterview, setHasConcludedInterview] = useState(false);
-const [isBotSpeaking, setIsBotSpeaking] = useState(false);
-  const [problemOptions, setProblemOptions] = useState<any[]>([]);
+
 
 // App.tsx
 
@@ -202,7 +204,9 @@ useEffect(() => {
     // Usa la funzione che hai già importato per aggiornare l'inizio
     updateLastBotMessageTimestamp('start');
   };
+// In App.tsx, dopo gli altri useEffect
 
+ // Questo effetto dipende SOLO dal trigger
   const onFinish = () => {
     setIsBotSpeaking(false);
     // E fa lo stesso per la fine
@@ -217,7 +221,32 @@ useEffect(() => {
   Tts.addEventListener('tts-finish', onFinish);
   Tts.addEventListener('tts-cancel', onCancel);
 }, [updateLastBotMessageTimestamp]); // Aggiungi la dipendenza per sicurezza
+useEffect(() => {
+  // Non fare nulla se il trigger non è attivo
+  if (!interviewTrigger) return;
 
+  // Definiamo una funzione asincrona per gestire l'avvio
+  const beginInterview = async () => {
+    const isStartingLive = interviewTrigger === 'live';
+
+    // 1. Imposta gli stati necessari
+    setIsLiveMode(isStartingLive);
+    if (isStartingLive) {
+      setHasConcludedInterview(false);
+      hasLiveConversationStarted.current = false;
+    }
+    uiActions.setFirstLoad(false);
+
+    // 2. Avvia l'intervista
+    await startInterview(isStartingLive);
+  };
+
+  beginInterview();
+
+  // 3. Resetta il trigger
+  setInterviewTrigger(null);
+
+}, [interviewTrigger, startInterview, uiActions]); // ✅ CORREZIONE: AGGIUNTE LE DIPENDENZE
 // 2. useEffect per GESTIRE il microfono in modo intelligente
 useEffect(() => {
   // Se il bot inizia a parlare, l'unica cosa che facciamo
@@ -241,16 +270,8 @@ useEffect(() => {
     }
     setVoiceEnabled(!voiceEnabled);
   };
-const handleStartNewChat = async () => {
-  if (voiceEnabled) {
-    Tts.stop();
-  }
-  await handleStartInterviewAndChat();
-};
-const handleStartLiveMode = () => {
-  setIsLiveMode(true);
-  handleStartInterviewAndChat(true); // Avvia l'intervista in modalità live
-};
+
+
 // Sostituisci la vecchia toggleLiveListening con questa
 // Sostituisci 'handleConcludeLiveInterview' con questa funzione
 const handleConcludeLiveInterview = () => {
@@ -302,16 +323,7 @@ const handleImportTranscript = async () => {
     );
   }
 };
-// In App.tsx
-const handleStartInterviewAndChat = async (liveMode = false) => {
-  setIsLiveMode(liveMode);
-  if (liveMode) {
-    setHasConcludedInterview(false); // ✅ CORRETTO: Usa il nuovo stato
-    hasLiveConversationStarted.current = false;
-  }
-   uiActions.setFirstLoad(false);
-     await startInterview();
-};
+
 
 const handleGenerateLiveReport = () => {
   // ✅ 1. Calcola le metriche fresche
@@ -407,7 +419,7 @@ const handleGoHome = () => {
           <View style={styles.startInterviewContainer}>
             <TouchableOpacity
               style={styles.startInterviewButton}
-              onPress={() => handleStartInterviewAndChat(false)}
+  onPress={() => setInterviewTrigger('text')} // 👈 NUOVO
             >
               <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
             </TouchableOpacity>
@@ -421,7 +433,7 @@ const handleGoHome = () => {
 
             <TouchableOpacity
               style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#4CAF50' }]}
-              onPress={() => handleStartInterviewAndChat(true)}
+               onPress={() => setInterviewTrigger('live')} // 👈 NUOVO
             >
               <Text style={styles.startInterviewButtonText}>🎙️ Modalità Live (Voce)</Text>
             </TouchableOpacity>
@@ -517,7 +529,7 @@ const handleGoHome = () => {
         onExportCharts={uiActions.openChartsModal}
         onExportChat={uiActions.openExportModal}
         onImportTranscript={handleImportTranscript}
-        onStartLiveMode={handleStartLiveMode}
+        onStartLiveMode={() => setInterviewTrigger('live')} // 👈 USA IL NUOVO TRIGGER
         isExporting={exporting}
       />
 
