@@ -18,7 +18,7 @@ import {
 import LiveIndicator from './components/LiveIndicator';
 import { useUIManager } from './hooks/useUIManager'; // <-- AGGIUNGI
 import ToolsMenuModal from './components/ToolsMenuModal'; // <-- AGGIUNGI
-import ChartsReportExport from './components/ChartsReportExport'; // default import (senza graffe)
+import ChartsReportExport, { ChartsReportExportHandles } from './components/ChartsReportExport';
 import { useExportManager } from './hooks/useExportManager';
 import { useEvaluationManager } from './hooks/useEvaluationManager';
 import HistoryModal from './components/HistoryModal';
@@ -67,6 +67,8 @@ export default function App() {
     const [isBotSpeaking, setIsBotSpeaking] = useState(false);
       const [problemOptions, setProblemOptions] = useState<any[]>([]);
       const [interviewTrigger, setInterviewTrigger] = useState<'live' | 'text' | null>(null);
+           const chartsRef = useRef<ChartsReportExportHandles>(null);
+                const [scrollViewKey, setScrollViewKey] = useState(0);
   const {
     chat, setChat,
     input, setInput,
@@ -118,7 +120,9 @@ export default function App() {
 
 
 // App.tsx
-
+  const handleTriggerChartExport = () => {
+        chartsRef.current?.export();
+    };
 const deactivateLiveMode = () => {
   if (isLiveMode) {
     voiceManager.stopListening();
@@ -419,7 +423,7 @@ const handleGoHome = () => {
           <View style={styles.startInterviewContainer}>
             <TouchableOpacity
               style={styles.startInterviewButton}
-  onPress={() => setInterviewTrigger('text')} // 👈 NUOVO
+              onPress={() => setInterviewTrigger('text')}
             >
               <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
             </TouchableOpacity>
@@ -433,13 +437,13 @@ const handleGoHome = () => {
 
             <TouchableOpacity
               style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#4CAF50' }]}
-               onPress={() => setInterviewTrigger('live')} // 👈 NUOVO
+              onPress={() => setInterviewTrigger('live')}
             >
               <Text style={styles.startInterviewButtonText}>🎙️ Modalità Live (Voce)</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          // --- SCHERMATA CHAT ---
+
           <>
             <ChatMessages
               chat={chat}
@@ -447,7 +451,6 @@ const handleGoHome = () => {
               evaluating={evaluating}
               problemOptions={problemOptions}
               onEvaluateSingleProblem={handleSelectProblemToEvaluate}
-
             />
 
             {isLiveMode && (
@@ -457,7 +460,7 @@ const handleGoHome = () => {
               />
             )}
 
-            {/* --- BARRA INFERIORE CON LOGICA CORRETTA --- */}
+
             <View style={styles.bottomBar}>
               {(() => {
                 // CASO 1: Modalità non live.
@@ -472,7 +475,7 @@ const handleGoHome = () => {
                         evaluating={evaluating}
                       />
                       <View style={styles.actionButtons}>
-                        <View style={[styles.toolsButtonContainer, { flex: 1 }]}>
+                        <View style={[{ flex: 1 }]}>
                           <Button
                             title="🔧 Strumenti"
                             onPress={handleOpenToolsMenu}
@@ -501,7 +504,7 @@ const handleGoHome = () => {
                 if (isLiveMode && hasConcludedInterview) {
                   return (
                     <View style={styles.actionButtons}>
-                      <View style={[styles.toolsButtonContainer, { flex: 1 }]}>
+                      <View style={[{ flex: 1 }]}>
                         <Button
                           title="🔧 Strumenti"
                           onPress={handleOpenToolsMenu}
@@ -521,7 +524,6 @@ const handleGoHome = () => {
         )}
       </View>
 
-      {/* --- MODALI --- */}
       <ToolsMenuModal
         visible={uiState.isToolsMenuVisible}
         onClose={uiActions.closeToolsMenu}
@@ -529,7 +531,7 @@ const handleGoHome = () => {
         onExportCharts={uiActions.openChartsModal}
         onExportChat={uiActions.openExportModal}
         onImportTranscript={handleImportTranscript}
-        onStartLiveMode={() => setInterviewTrigger('live')} // 👈 USA IL NUOVO TRIGGER
+        onStartLiveMode={() => setInterviewTrigger('live')}
         isExporting={exporting}
       />
 
@@ -548,28 +550,51 @@ const handleGoHome = () => {
         onSave={(fileName) => exportChatToFile(chat, fileName)}
       />
 
-      <Modal
-        animationType="slide"
-        transparent={false}
-        visible={uiState.showChartsModal}
-        onRequestClose={uiActions.closeChartsModal}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Report Grafici</Text>
-            <TouchableOpacity onPress={uiActions.closeChartsModal}>
-              <Text style={styles.closeButton}>✕</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={styles.modalContent}>
-            <ChartsReportExport
-              problems={problemOptions}
-              evaluationLog={chatHistory.find(c => c.id === currentChatId)?.evaluationLog}
-              onSaved={uiActions.closeChartsModal}
-            />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+    {/* --- MODALE DEI GRAFICI CON LOGICA A RITARDO --- */}
+          <Modal
+            animationType="slide"
+            transparent={false}
+            visible={uiState.showChartsModal}
+            onRequestClose={uiActions.closeChartsModal}
+            // Quando la modale si apre, avviamo il timer per forzare il re-render
+            onShow={() => {
+              setTimeout(() => {
+                setScrollViewKey(prevKey => prevKey + 1);
+              }, 2000); // 2 secondi di ritardo
+            }}
+          >
+            <SafeAreaView style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Report Grafici</Text>
+                <TouchableOpacity onPress={uiActions.closeChartsModal}>
+                  <Text style={styles.closeButton}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.exportButtonContainer}>
+                <Button
+                  title="Esporta Immagine Grafici"
+                  onPress={handleTriggerChartExport}
+                />
+              </View>
+
+              {/* La chiave forza il re-render della ScrollView dopo il ritardo */}
+              <ScrollView
+                key={scrollViewKey}
+                style={styles.modalContent}
+              >
+                <ChartsReportExport
+                  ref={chartsRef}
+                  problems={problemOptions}
+                  evaluationLog={
+                    chatHistory.find((c) => c.id === currentChatId)?.evaluationLog
+                  }
+                  onSaved={uiActions.closeChartsModal}
+                  // La prop onLayoutReady è stata rimossa
+                />
+              </ScrollView>
+            </SafeAreaView>
+          </Modal>
 
       <Modal transparent={true} visible={evaluating || exporting}>
         <View style={styles.loadingModal}>
@@ -583,6 +608,7 @@ const handleGoHome = () => {
       </Modal>
     </SafeAreaView>
   );
+
   }
 
 const styles = StyleSheet.create({
@@ -717,10 +743,12 @@ closeButton: {
   padding: 5,
   color: '#000', // ✅ Aggiunto
 },
-//...
-  modalContent: {
-    padding: 10,
-  },
+
+modalContent: {
+  flex: 1, // <-- RI-AGGIUNGI QUESTA RIGA FONDAMENTALE
+  padding: 10,
+},
+
   historyItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -805,4 +833,5 @@ closeButton: {
     fontSize: 18,
     fontWeight: 'bold',
   },
+
 });
