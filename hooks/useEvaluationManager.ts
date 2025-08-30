@@ -44,7 +44,7 @@ export const useEvaluationManager = ({
        timeHint =
          `**Nota contenente le metriche da considerare e menzionare sempre nella valutazione di Pensiero Rallentato: ` +
          `DATI DEL PAZIENTE:` +
-         `Tempo medio di risposta = ${metrics.avgTimeResponse.toFixed(2)}s. ` +
+         `Tempo medio di risposta durante questa conversazione = ${metrics.avgTimeResponse.toFixed(2)}s. ` +
          `Se > 2 secondi rafforza la presenza della problematica.**\n`;
      }
      if (problem.fenomeno.toLowerCase().includes('logorrea')) {
