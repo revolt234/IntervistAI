@@ -405,17 +405,16 @@ const handleGoHome = () => {
     }
   };
 
-   return (
-      <SafeAreaView style={styles.container}>
-        <ChatHeader
-          onToggleHistoryModal={uiActions.openHistoryModal}
-
-          onGoHome={handleGoHome}
-          isOnHome={uiState.isFirstLoad}
-          voiceEnabled={voiceEnabled}
-          onToggleVoice={toggleVoice}
-          isLiveMode={isLiveMode}
-        />
+  return (
+    <SafeAreaView style={styles.container}>
+      <ChatHeader
+        onToggleHistoryModal={uiActions.openHistoryModal}
+        onGoHome={handleGoHome}
+        isOnHome={uiState.isFirstLoad}
+        voiceEnabled={voiceEnabled}
+        onToggleVoice={toggleVoice}
+        isLiveMode={isLiveMode}
+      />
 
       <View style={styles.chatContainer}>
         {uiState.isFirstLoad && chat.length === 0 ? (
