@@ -409,6 +409,7 @@ const handleGoHome = () => {
       <SafeAreaView style={styles.container}>
         <ChatHeader
           onToggleHistoryModal={uiActions.openHistoryModal}
+
           onGoHome={handleGoHome}
           isOnHome={uiState.isFirstLoad}
           voiceEnabled={voiceEnabled}
