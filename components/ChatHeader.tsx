@@ -3,17 +3,17 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 interface ChatHeaderProps {
   onToggleHistoryModal: () => void;
-  onNewChat: () => void;
+  // onNewChat: () => void; // RIMUOVI QUESTA RIGA
   onGoHome: () => void;
   isOnHome: boolean;
   voiceEnabled: boolean;
   onToggleVoice: () => void;
-  isLiveMode: boolean; // Assicurati che questa prop sia passata da App.tsx
+  isLiveMode: boolean;
 }
 
 const ChatHeader: React.FC<ChatHeaderProps> = ({
   onToggleHistoryModal,
-  onNewChat,
+  // onNewChat, // RIMUOVI QUESTA RIGA
   onGoHome,
   isOnHome,
   voiceEnabled,
@@ -38,13 +38,13 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
       )}
 
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {/* --- QUESTA È LA MODIFICA CHIAVE --- */}
-        {/* Mostra "Nuova Chat" solo se NON sei in home */}
-        {!isOnHome && (
+        {/* --- BLOCCO DA RIMUOVERE --- */}
+        {/* {!isOnHome && (
           <TouchableOpacity onPress={onNewChat} style={styles.newChatButton}>
             <Text style={styles.newChatButtonText}>+ Nuova Chat</Text>
           </TouchableOpacity>
-        )}
+        )} */}
+        {/* --- FINE BLOCCO DA RIMUOVERE --- */}
 
         {/* Pulsante Voce (visibile solo in chat e non in modalità live) */}
         {!isOnHome && !isLiveMode && (
