@@ -149,39 +149,23 @@ const deactivateLiveMode = () => {
 // ✅ AGGIUNGI QUESTO BLOCCO
   // Questo "contenitore" ci permette di usare la funzione in modo sicuro
   const updateTimestampRef = useRef(updateLastBotMessageTimestamp);
+// SOSTITUISCI IL VECCHIO useEffect che gestisce la voce CON QUESTO:
+// useEffect in App.tsx (VERSIONE CORRETTA)
+
 useEffect(() => {
-  // Esegui solo se l'utente ha finito di parlare e siamo in modalità live non conclusa
-  if (!voiceManager.hasFinishedSpeaking || !isLiveMode || hasConcludedInterview) {
-    return;
+  // Questo effetto si attiva SOLO quando l'hook ci dice che ha finito.
+  if (voiceManager.hasFinishedSpeaking && isLiveMode && !hasConcludedInterview) {
+    const recognizedText = voiceManager.recognizedText.trim();
+
+    // Se l'utente ha parlato, inviamo il messaggio.
+    if (recognizedText) {
+      const startTime = voiceManager.actualSpeechStartTime ?? voiceManager.speechStartTime;
+      sendVoiceMessage(recognizedText, startTime, voiceManager.speechEndTime);
+    }
+
+    voiceManager.resetFinishedSpeaking();
   }
-
-  const recognizedText = voiceManager.recognizedText.trim();
-
-  // CASO 1: L'utente ha parlato.
-  if (recognizedText) {
-    voiceManager.stopListening();
-    sendVoiceMessage(recognizedText, voiceManager.speechStartTime, voiceManager.speechEndTime);
-  }
-  // CASO 2: L'utente è rimasto in silenzio -> Il bot interviene.
-  else {
-    voiceManager.stopListening(); // ✅ Aggiungi questa riga per prevenire la riattivazione immediata
-
-    const promptMessage = "Non hai risposto alla domanda, ci sei?";
-    const newBotMessage = {
-      role: 'bot' as const,
-      message: promptMessage,
-      start: Date.now() / 1000,
-      end: 0,
-    };
-    setChat(prevChat => [...prevChat, newBotMessage]);
-    Tts.speak(promptMessage);
-  }
-
-  // In entrambi i casi, resettiamo il flag per il prossimo turno.
-  voiceManager.resetFinishedSpeaking();
-
-}, [voiceManager.hasFinishedSpeaking, voiceManager.recognizedText, isLiveMode, hasConcludedInterview, sendVoiceMessage, setChat]);
-
+}, [voiceManager.hasFinishedSpeaking]);
 useEffect(() => {
   const loadProblems = async () => {
     try {
@@ -262,12 +246,10 @@ useEffect(() => {
 
   // Se arriviamo qui, significa che isBotSpeaking è `false`.
   // Ora controlliamo se la conversazione è effettivamente iniziata.
-  if (hasLiveConversationStarted.current && isLiveMode && !hasConcludedInterview) {
+ if (hasLiveConversationStarted.current && isLiveMode && !hasConcludedInterview) {
     voiceManager.startListening();
   }
-}, [isBotSpeaking, isLiveMode, hasConcludedInterview]); // ✅ Usa il nuovo stato
-
-
+}, [isBotSpeaking, isLiveMode, hasConcludedInterview, voiceManager.startListening]); // 👈 AGGIUNGI QUESTO
   const toggleVoice = () => {
     if (voiceEnabled) {
       Tts.stop();

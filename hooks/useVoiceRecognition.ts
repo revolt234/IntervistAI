@@ -1,105 +1,127 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import Voice2Text from 'react-native-voice2text';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSpeechRecognition as useVoicebox } from 'react-native-voicebox-speech-rec';
 
+// Questa è la versione definitiva che cattura il timestamp preciso
+// sia all'inizio (prima parola) sia alla fine (ultima parola).
 export const useVoiceRecognition = () => {
+  const {
+    startSpeechRecognition,
+    stopSpeechRecognition,
+    speechContentRealTime,
+    setSpeechRecErrorHandler,
+    setSpeechRecStartedHandler,
+    setSpeechRecCompletedHandler,
+  } = useVoicebox();
+
   const [isListening, setIsListening] = useState(false);
-  const [recognizedText, setRecognizedText] = useState('');
   const [hasFinishedSpeaking, setHasFinishedSpeaking] = useState(false);
   const [error, setError] = useState('');
+
+  // Timestamp
   const [speechStartTime, setSpeechStartTime] = useState(0);
+  const [actualSpeechStartTime, setActualSpeechStartTime] = useState(0);
   const [speechEndTime, setSpeechEndTime] = useState(0);
 
-  const speechTimeout = useRef<NodeJS.Timeout | null>(null);
+  // 🧠 NUOVA LOGICA: Usiamo un ref per memorizzare il timestamp dell'ultima parola
+  // Questo evita re-render inutili e ci dà il valore più aggiornato.
+  const lastWordTimestampRef = useRef(0);
 
-  const onResultsHandler = useCallback((result: { text: string }) => {
-    const text = result.text || '';
-    setRecognizedText(text);
+  // Timer per l'auto-invio
+  const endSpeechTimer = useRef<NodeJS.Timeout | null>(null);
 
-    if (text.trim().length > 0) {
-      if (speechTimeout.current) {
-        clearTimeout(speechTimeout.current);
-      }
-      speechTimeout.current = setTimeout(() => {
-        setSpeechEndTime(Date.now() / 1000);
-        setHasFinishedSpeaking(true);
-        setIsListening(false);
-      }, 2000);
-    }
+  const cleanupTimer = useCallback(() => {
+    if (endSpeechTimer.current) clearTimeout(endSpeechTimer.current);
   }, []);
 
-  // ✅ GESTORE ERRORI "INTELLIGENTE"
-  const onErrorHandler = useCallback((e: { message: string; code?: string }) => {
-    const errorMessage = e.message || 'Errore sconosciuto';
-    setError(errorMessage);
-    setIsListening(false);
-
-    // Se l'errore è dovuto al silenzio (es. "No match"),
-    // lo trattiamo come un turno di parola "vuoto" e finito.
-    if (errorMessage.includes('No match') || errorMessage.includes('No speech input')) {
-      setRecognizedText('');
-      setHasFinishedSpeaking(true); // Questo attiva la logica del bot in App.tsx
-    }
-  }, []);
-
+  // Handler per l'inizio: imposta solo l'inizio dell'ascolto
   useEffect(() => {
-    Voice2Text.onResults(onResultsHandler);
-    Voice2Text.onError(onErrorHandler);
+    setSpeechRecStartedHandler(() => {
+      setIsListening(true);
+      setHasFinishedSpeaking(false);
+      const now = Date.now() / 1000;
+      setSpeechStartTime(now);
+      setActualSpeechStartTime(0);
+      lastWordTimestampRef.current = now; // Inizializza il timestamp di fine a quello di inizio
+    });
+  }, [setSpeechRecStartedHandler]);
 
-    return () => {
-      Voice2Text.destroy();
-    };
-  }, [onResultsHandler, onErrorHandler]);
+  // Handler per la fine: finalizza lo stato usando il timestamp salvato
+  useEffect(() => {
+    setSpeechRecCompletedHandler(() => {
+      cleanupTimer();
+      setIsListening(false);
+      // ✅ USA IL TIMESTAMP DELL'ULTIMA PAROLA, NON Date.now()
+      setSpeechEndTime(lastWordTimestampRef.current);
+      setHasFinishedSpeaking(true);
+    });
+  }, [setSpeechRecCompletedHandler, cleanupTimer]);
 
-  const reset = () => {
+  // Handler per gli errori
+  useEffect(() => {
+    setSpeechRecErrorHandler((errorMessage: string) => {
+      cleanupTimer();
+      setError(errorMessage);
+      setIsListening(false);
+      setHasFinishedSpeaking(true);
+    });
+  }, [setSpeechRecErrorHandler, cleanupTimer]);
+
+  // Questo useEffect osserva il testo in tempo reale.
+  useEffect(() => {
+    if (!isListening) return;
+
+    // Se il testo è apparso per la prima volta, cattura il timestamp di inizio parlato.
+    if (speechContentRealTime && actualSpeechStartTime === 0) {
+      const now = Date.now() / 1000;
+      setActualSpeechStartTime(now);
+      lastWordTimestampRef.current = now; // Aggiorna anche il timestamp di fine
+    }
+
+    // Se c'è del testo, aggiorna il timestamp dell'ultima parola e resetta il timer.
+    if (speechContentRealTime) {
+      // ✅ OGNI PAROLA AGGIORNA IL TIMESTAMP DI FINE
+      lastWordTimestampRef.current = Date.now() / 1000;
+
+      cleanupTimer();
+      endSpeechTimer.current = setTimeout(() => {
+        stopSpeechRecognition();
+      }, 2000); // 2 secondi di silenzio
+    }
+  }, [speechContentRealTime, isListening, actualSpeechStartTime, stopSpeechRecognition, cleanupTimer]);
+
+  // Funzioni esposte ad App.tsx
+  const startListening = useCallback(() => {
+    startSpeechRecognition('it-IT');
+  }, [startSpeechRecognition]);
+
+  const stopListening = useCallback(() => {
+    cleanupTimer();
+    stopSpeechRecognition();
+  }, [stopSpeechRecognition, cleanupTimer]);
+
+  const reset = useCallback(() => {
+    cleanupTimer();
     setIsListening(false);
-    setRecognizedText('');
     setHasFinishedSpeaking(false);
     setError('');
-    setSpeechStartTime(0);
-    setSpeechEndTime(0);
-    if (speechTimeout.current) {
-      clearTimeout(speechTimeout.current);
-    }
-  };
+  }, [cleanupTimer]);
 
-  const startListening = async () => {
-    reset();
-    try {
-      const granted = await Voice2Text.checkPermissions();
-      if (granted) {
-        await Voice2Text.startListening('it-IT');
-        setIsListening(true);
-        setSpeechStartTime(Date.now() / 1000);
-      } else {
-        setError('Permesso per il microfono negato.');
-      }
-    } catch (e: any) {
-      console.error('Errore startListening:', e);
-      setError(e.message);
-      setIsListening(false);
-    }
-  };
-
-  const stopListening = async () => {
-    try {
-      await Voice2Text.stopListening();
-    } catch (e: any) {
-      console.error('Errore stopListening:', e);
-    } finally {
-      setIsListening(false);
-    }
-  };
+  const resetFinishedSpeaking = useCallback(() => {
+    setHasFinishedSpeaking(false);
+  }, []);
 
   return {
     isListening,
-    recognizedText,
+    recognizedText: speechContentRealTime,
     hasFinishedSpeaking,
     error,
     speechStartTime,
+    actualSpeechStartTime,
     speechEndTime,
     startListening,
     stopListening,
-    resetFinishedSpeaking: () => setHasFinishedSpeaking(false),
+    resetFinishedSpeaking,
     reset,
   };
 };
+

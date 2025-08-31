@@ -20,13 +20,16 @@
     "react-native-dotenv": "^3.4.11",
     "react-native-file-access": "^3.1.1",
     "react-native-fs": "^2.20.0",
+    "react-native-localize": "^3.5.2",
     "react-native-pdf": "^6.7.7",
     "react-native-share": "^12.2.0",
     "react-native-svg": "^9.13.6",
     "react-native-tts": "^4.1.1",
     "react-native-vector-icons": "^10.3.0",
     "react-native-view-shot": "^4.0.3",
-    "react-native-voice2text": "^0.1.16",
+    "react-native-voicebox-speech-rec": "^1.0.4",
+    "react-native-volume-manager": "^2.0.8",
+    "react-native-webview": "^13.16.0",
     "victory-native": "^36.6.11"
   },
   "devDependencies": {
@@ -54,5 +57,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "overrides": {
+    "react": "$react"
   }
 }

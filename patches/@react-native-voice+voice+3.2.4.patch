@@ -1,0 +1,11 @@
+patch-package
+--- a/node_modules/@react-native-voice/voice/android/src/main/java/com/wenkesj/voice/VoiceModule.java
++++ b/node_modules/@react-native-voice/voice/android/src/main/java/com/wenkesj/voice/VoiceModule.java
+@@ -59,7 +59,6 @@
+
+   public VoiceModule(ReactApplicationContext reactContext) {
+     super(reactContext);
+-    this.reactContext = reactContext;
+   }
+
+   @Override
