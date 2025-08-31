@@ -94,7 +94,7 @@ class TranscriptAnalytics {
     if (patientTurns.length === 0) return { avg: 0, max: 0 };
 
     // Impostiamo una soglia minima di parole per considerare il calcolo valido.
-    const MIN_WORDS_FOR_RATE_CALCULATION = 10;
+    const MIN_WORDS_FOR_RATE_CALCULATION = 8;
 
     const rates = patientTurns.map(turn => {
       const duration = turn.end - turn.start;
