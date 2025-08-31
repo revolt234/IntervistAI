@@ -88,22 +88,32 @@ class TranscriptAnalytics {
 
   /**
    * Calcola la velocità media e massima del parlato del paziente,
-   * filtrando valori anomali.
+   * filtrando valori anomali e frasi troppo corte.
    */
   private static calculateSpeechRates(patientTurns: any[]): { avg: number; max: number } {
     if (patientTurns.length === 0) return { avg: 0, max: 0 };
 
+    // Impostiamo una soglia minima di parole per considerare il calcolo valido.
+    const MIN_WORDS_FOR_RATE_CALCULATION = 10;
+
     const rates = patientTurns.map(turn => {
       const duration = turn.end - turn.start;
-      if (duration <= 0) return 0;
       const words = turn.text.trim().split(/\s+/).length;
-      return words / duration;
+
+      // NUOVO CONTROLLO: Ignora le frasi troppo corte per un calcolo di velocità affidabile
+      if (duration <= 0 || words < MIN_WORDS_FOR_RATE_CALCULATION) {
+        return 0;
+      }
+
+      return words / duration; // Calcola in parole al secondo
     }).filter(rate => rate > 0);
 
+    // Filtriamo i valori anomali che superano la nostra soglia realistica
     const filteredRates = rates.filter(rate => rate <= this.MAX_REALISTIC_SPEECH_RATE);
 
     if (filteredRates.length === 0) return { avg: 0, max: 0 };
 
+    // Usiamo l'array filtrato per i calcoli finali
     const avg = filteredRates.reduce((a, b) => a + b, 0) / filteredRates.length;
     const max = Math.max(...filteredRates);
 
