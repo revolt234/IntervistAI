@@ -31,7 +31,6 @@ interface ChatManagerProps {
 
 export const useChatManager = ({ isLiveMode, voiceEnabled }: ChatManagerProps) => {
   const [chat, setChat] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
   const [questions, setQuestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
@@ -98,13 +97,12 @@ export const useChatManager = ({ isLiveMode, voiceEnabled }: ChatManagerProps) =
     });
   };
 
-  const startNewChat = async () => {
-    Tts.stop();
-    if (chat.length > 0) saveChat();
-    setChat([]);
-    setInput('');
-    setHasAskedForNameAndBirth(false);
-    setCurrentChatId(Date.now().toString());
+ const startNewChat = async () => {
+     Tts.stop();
+     if (chat.length > 0) saveChat();
+     setChat([]);
+     setHasAskedForNameAndBirth(false);
+     setCurrentChatId(Date.now().toString());
     setInitialPromptSent(false);
     setCurrentEvaluationScores({});
     setAskedQuestions([]);
@@ -227,22 +225,6 @@ export const useChatManager = ({ isLiveMode, voiceEnabled }: ChatManagerProps) =
     }
   };
 
-  // ✅ 2. FUNZIONE SPECIFICA PER I MESSAGGI DI TESTO
-  const sendMessage = (messageText: string) => {
-    if (!messageText.trim()) return;
-
-    const now = Date.now() / 1000;
-    const userMessage: Message = {
-      role: 'user',
-      message: messageText,
-      start: now, // Per i messaggi di testo, start e end sono uguali
-      end: now,
-    };
-
-    const updatedChat = [...chat, userMessage];
-    setChat(updatedChat);
-    getBotResponse(userMessage, chat); // Chiama la funzione centralizzata
-  };
 
   // ✅ 3. FUNZIONE SPECIFICA PER I MESSAGGI VOCALI (LA TUA CORREZIONE)
   // Questa funzione accetta start e end come parametri e li usa.
@@ -261,12 +243,6 @@ export const useChatManager = ({ isLiveMode, voiceEnabled }: ChatManagerProps) =
     getBotResponse(userMessage, chat); // Chiama la funzione centralizzata
   };
 
-  const handleSendFromInput = () => {
-    if (input.trim()) {
-      sendMessage(input);
-      setInput('');
-    }
-  };
 
   const startInterview = async (isStartingLive: boolean) => { // ✅ Accetta un parametro
     setLoading(true);
@@ -304,17 +280,18 @@ export const useChatManager = ({ isLiveMode, voiceEnabled }: ChatManagerProps) =
     }
   };
 
-  return {
-    chat, setChat, input, setInput, questions, loading, setLoading,
-    evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
-    chatHistory, setChatHistory, currentChatId, setCurrentChatId,
-    currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
-    initialPromptSent, setInitialPromptSent,
-    sendMessage: handleSendFromInput,
-    sendVoiceMessage: sendVoiceMessage,
-    startNewChat,
-    startInterview,
-    saveChat,
-    updateLastBotMessageTimestamp, // ✅ AGGIUNGI QUESTA RIGA
-  };
+  // in useChatManager.ts
+
+    return {
+      chat, setChat, /* input, setInput, */ questions, loading, setLoading,
+      evaluating, setEvaluating, hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
+      chatHistory, setChatHistory, currentChatId, setCurrentChatId,
+      currentEvaluationScores, setCurrentEvaluationScores, askedQuestions, setAskedQuestions,
+      initialPromptSent, setInitialPromptSent,
+      sendVoiceMessage: sendVoiceMessage,
+      startNewChat,
+      startInterview,
+      saveChat,
+      updateLastBotMessageTimestamp,
+    };
 };

@@ -70,24 +70,22 @@ export default function App() {
            const chartsRef = useRef<ChartsReportExportHandles>(null);
                 const [scrollViewKey, setScrollViewKey] = useState(0);
   const {
-    chat, setChat,
-    input, setInput,
-    loading, setLoading,
-    evaluating, setEvaluating,
-    hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
-    chatHistory, setChatHistory,
-    currentChatId, setCurrentChatId,
-    currentEvaluationScores, setCurrentEvaluationScores,
-    askedQuestions, setAskedQuestions,
-    initialPromptSent, setInitialPromptSent,
-    questions,
-    sendMessage,
-     sendVoiceMessage,    // <-- AGGIUNGI QUESTA RIGA
-    startNewChat,
-    startInterview,
-   saveChat,
-      updateLastBotMessageTimestamp, // ✅ Recupera la nuova funzione
-   } = useChatManager({ isLiveMode, voiceEnabled });
+      chat, setChat,
+      loading, setLoading,
+      evaluating, setEvaluating,
+      hasAskedForNameAndBirth, setHasAskedForNameAndBirth,
+      chatHistory, setChatHistory,
+      currentChatId, setCurrentChatId,
+      currentEvaluationScores, setCurrentEvaluationScores,
+      askedQuestions, setAskedQuestions,
+      initialPromptSent, setInitialPromptSent,
+      questions,
+       sendVoiceMessage,
+      startNewChat,
+      startInterview,
+     saveChat,
+        updateLastBotMessageTimestamp,
+     } = useChatManager({ isLiveMode, voiceEnabled });
 
   const { exporting, exportChatToFile } = useExportManager();
   const voiceManager = useVoiceRecognition(); // <-- AGGIUNGI QUESTA RIGA
@@ -435,29 +433,25 @@ const handleGoHome = () => {
             <View style={styles.bottomBar}>
               {(() => {
                 // CASO 1: Modalità non live.
-                if (!isLiveMode) {
-                  return (
-                    <>
-                      <ChatInput
-                        input={input}
-                        onChangeInput={setInput}
-                        onSend={() => sendMessage(input)}
-                        loading={loading}
-                        evaluating={evaluating}
-                      />
-                      <View style={styles.actionButtons}>
-                        <View style={[{ flex: 1 }]}>
-                          <Button
-                            title="🔧 Strumenti"
-                            onPress={handleOpenToolsMenu}
-                            disabled={loading || evaluating || chat.length === 0}
-                            color="#673AB7"
-                          />
-                        </View>
-                      </View>
-                    </>
-                  );
-                }
+               // In App.tsx -> return() -> dentro il blocco {(() => { ... })()}
+
+                               // CASO 1: Modalità non live.
+                               if (!isLiveMode) {
+                                 return (
+                                   // Rimuoviamo ChatInput e lasciamo solo i pulsanti di azione
+                                   <View style={styles.actionButtons}>
+                                     <View style={[{ flex: 1 }]}>
+                                       <Button
+                                         title="🔧 Strumenti"
+                                         title="🔧 Strumenti"
+                                         onPress={handleOpenToolsMenu}
+                                         disabled={loading || evaluating || chat.length === 0}
+                                         color="#673AB7"
+                                       />
+                                     </View>
+                                   </View>
+                                 );
+                               }
 
                 // CASO 2: Modalità live e l'intervista è IN CORSO.
                 if (isLiveMode && !hasConcludedInterview) {
