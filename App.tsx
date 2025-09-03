@@ -66,7 +66,7 @@ export default function App() {
     const [hasConcludedInterview, setHasConcludedInterview] = useState(false);
     const [isBotSpeaking, setIsBotSpeaking] = useState(false);
       const [problemOptions, setProblemOptions] = useState<any[]>([]);
-      const [interviewTrigger, setInterviewTrigger] = useState<'live' | 'text' | null>(null);
+      const [interviewTrigger, setInterviewTrigger] = useState<'live' | null>(null);
            const chartsRef = useRef<ChartsReportExportHandles>(null);
                 const [scrollViewKey, setScrollViewKey] = useState(0);
   const {
@@ -209,32 +209,29 @@ useEffect(() => {
   Tts.addEventListener('tts-finish', onFinish);
   Tts.addEventListener('tts-cancel', onCancel);
 }, [updateLastBotMessageTimestamp]); // Aggiungi la dipendenza per sicurezza
+// App.tsx
 useEffect(() => {
-  // Non fare nulla se il trigger non è attivo
-  if (!interviewTrigger) return;
+  // L'effetto si attiva solo quando si vuole iniziare la modalità live
+  if (interviewTrigger !== 'live') return;
 
   // Definiamo una funzione asincrona per gestire l'avvio
-  const beginInterview = async () => {
-    const isStartingLive = interviewTrigger === 'live';
-
-    // 1. Imposta gli stati necessari
-    setIsLiveMode(isStartingLive);
-    if (isStartingLive) {
-      setHasConcludedInterview(false);
-      hasLiveConversationStarted.current = false;
-    }
+  const beginLiveInterview = async () => {
+    // 1. Imposta direttamente gli stati per la modalità live
+    setIsLiveMode(true);
+    setHasConcludedInterview(false);
+    hasLiveConversationStarted.current = false;
     uiActions.setFirstLoad(false);
 
-    // 2. Avvia l'intervista
-    await startInterview(isStartingLive);
+    // 2. Avvia l'intervista passando 'true' per la modalità live
+    await startInterview(true);
   };
 
-  beginInterview();
+  beginLiveInterview();
 
   // 3. Resetta il trigger
   setInterviewTrigger(null);
 
-}, [interviewTrigger, startInterview, uiActions]); // ✅ CORREZIONE: AGGIUNTE LE DIPENDENZE
+}, [interviewTrigger, startInterview, uiActions]);
 // 2. useEffect per GESTIRE il microfono in modo intelligente
 useEffect(() => {
   // Se il bot inizia a parlare, l'unica cosa che facciamo
@@ -303,9 +300,7 @@ const handleImportTranscript = async () => {
 
     Alert.alert(
       'Importazione Riuscita',
-      `Aggiunte ${transcript.length} battute alla conversazione.\n` +
-      `Tempo medio risposta: ${metrics.avgTimeResponse.toFixed(2)}s\n` +
-      `Velocità media: ${metrics.avgSpeechRate.toFixed(2)} parole/s`
+      `Aggiunte ${transcript.length} battute alla conversazione.\n`
     );
   }
 };
@@ -402,12 +397,7 @@ const handleGoHome = () => {
         {uiState.isFirstLoad && chat.length === 0 ? (
           // --- SCHERMATA INIZIALE ---
           <View style={styles.startInterviewContainer}>
-            <TouchableOpacity
-              style={styles.startInterviewButton}
-              onPress={() => setInterviewTrigger('text')}
-            >
-              <Text style={styles.startInterviewButtonText}>Inizia Intervista</Text>
-            </TouchableOpacity>
+
 
             <TouchableOpacity
               style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#FFC107' }]}
@@ -420,7 +410,7 @@ const handleGoHome = () => {
               style={[styles.startInterviewButton, { marginTop: 15, backgroundColor: '#4CAF50' }]}
               onPress={() => setInterviewTrigger('live')}
             >
-              <Text style={styles.startInterviewButtonText}>🎙️ Modalità Live (Voce)</Text>
+              <Text style={styles.startInterviewButtonText}>🎙️ Intervista Live</Text>
             </TouchableOpacity>
           </View>
         ) : (

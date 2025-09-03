@@ -36,7 +36,7 @@ export const useEvaluationManager = ({
            `DATI DEL PAZIENTE:` +
            `Velocità media del parlato = ${metrics.avgSpeechRate.toFixed(2)} parole/s; ` +
            `Picco di velocità = ${metrics.maxSpeechRate.toFixed(2)} parole/s. ` +
-           `Tu devi considerare che in media la velcità di conversazione si aggira intorno alle 130-150 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
+           `Tu devi considerare che in media la velcità di conversazione si aggira intorno alle 110-190 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
        }
      }
      if (problem.fenomeno.toLowerCase().includes('rallentato') && metrics.avgTimeResponse !== undefined) {
@@ -104,12 +104,12 @@ if (selectedProblem.fenomeno.toLowerCase().includes('discorso sotto pressione'))
       const previousScore = chatObj?.evaluationScores?.[selectedProblem.fenomeno] ?? -1;
 
       // ✅ Manteniamo questo alert (lo volevi conservare)
-      Alert.alert(
+     /* Alert.alert(
         '🧠 Punteggio Precedente',
         previousScore >= 0
           ? `Il punteggio già assegnato per "${selectedProblem.fenomeno}" è: ${previousScore}`
           : 'Nessun punteggio precedente disponibile per questo fenomeno.'
-      );
+      );*/
 
 // In handleEvaluateSingleProblem...
 // ✅ Passa l'oggetto 'metrics' alla funzione
@@ -170,13 +170,7 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
             console.warn('Persistenza chatHistory fallita:', e);
           }
 
-          // 🔎 DEBUG: stampa TUTTO lo storico aggiornato
-          Alert.alert(
-            `DEBUG singolo • ${selectedProblem.fenomeno}`,
-            `Nuovo punteggio: ${newScore}\n\nevaluationLog:\n${JSON.stringify(curr.evaluationLog, null, 2)}`
-          );
-          console.log('DEBUG [single] saved score', selectedProblem.fenomeno, newScore);
-          console.log('DEBUG [single] evaluationLog', curr.evaluationLog);
+
         }
       }
 
@@ -272,14 +266,6 @@ ${chat.map(m => `${m.role === 'user' ? 'PAZIENTE' : 'MEDICO'}: ${m.message}`).jo
             } catch (e) {
               console.warn('Persistenza chatHistory fallita (bulk):', e);
             }
-
-            // 🔎 DEBUG per ogni fenomeno
-            Alert.alert(
-              `DEBUG bulk • ${problem.fenomeno}`,
-              `Nuovo punteggio: ${score}\n\nevaluationLog:\n${JSON.stringify(curr.evaluationLog, null, 2)}`
-            );
-            console.log('DEBUG [bulk] saved score', problem.fenomeno, score);
-            console.log('DEBUG [bulk] evaluationLog', curr.evaluationLog);
           }
         }
       }
