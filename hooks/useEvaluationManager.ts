@@ -36,7 +36,7 @@ export const useEvaluationManager = ({
            `DATI DEL PAZIENTE:` +
            `Velocità media del parlato = ${metrics.avgSpeechRate.toFixed(2)} parole/s (dato più importante); ` +
            `Picco di velocità = ${metrics.maxSpeechRate.toFixed(2)} parole/s (da tenere in considerazione); ` +
-           `Tu devi considerare che una velocità di conversazione normale si aggira intorno alle 110-190 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
+           `Tu devi considerare che una velocità di conversazione normale è compresa nel range 110-190 parole al minuto, un range più elevato rafforza la presenza della problematica.\n\n`;
        }
      }
      if (problem.fenomeno.toLowerCase().includes('rallentato') && metrics.avgTimeResponse !== undefined) {
