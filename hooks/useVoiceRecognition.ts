@@ -176,3 +176,4 @@ export const useVoiceRecognition = () => {
     reset,                      // Funzione per un reset completo
   };
 };
+//sw+ex
