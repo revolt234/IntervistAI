@@ -126,7 +126,7 @@ export const useVoiceRecognition = () => {
       // la funzione `stopSpeechRecognition` verrà chiamata, terminando l'ascolto.
       endSpeechTimer.current = setTimeout(() => {
         stopSpeechRecognition();
-      }, 2000); // 2 secondi di silenzio per terminare.
+      }, 4000); // 2 secondi di silenzio per terminare.
     }
   }, [speechContentRealTime, isListening, actualSpeechStartTime, stopSpeechRecognition, cleanupTimer]);
 
